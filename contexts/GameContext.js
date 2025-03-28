@@ -63,6 +63,7 @@ export function GameProvider({ children }) {
 
   async function fetchGameState(userId) {
     try {
+      console.log('Fetching game state for user:', userId);
       // Fetch game state
       const { data: gameStateData, error: gameStateError } = await supabase
         .from('game_states')
@@ -70,23 +71,32 @@ export function GameProvider({ children }) {
         .eq('id', userId)
         .single();
 
+      console.log('Game state data:', gameStateData);
+      console.log('Game state error:', gameStateError);
+
       if (gameStateError && gameStateError.code !== 'PGRST116') {
         throw gameStateError;
       }
 
       // If no game state exists, create a new one
       if (!gameStateData) {
+        console.log('No game state found, creating new one');
         await createNewGameState(userId);
       } else {
+        console.log('Setting game state:', gameStateData);
         setGameState(gameStateData);
       }
 
       // Fetch other kingdoms
+      console.log('Fetching other kingdoms');
       const { data: kingdoms, error: kingdomsError } = await supabase
         .from('game_states')
         .select('id, kingdom_name, buildings, army')
         .neq('id', userId)
         .limit(10);
+
+      console.log('Other kingdoms:', kingdoms);
+      console.log('Kingdoms error:', kingdomsError);
 
       if (kingdomsError) {
         throw kingdomsError;
@@ -95,6 +105,7 @@ export function GameProvider({ children }) {
       setOtherKingdoms(kingdoms || []);
 
       // Fetch war reports
+      console.log('Fetching war reports');
       const { data: reports, error: reportsError } = await supabase
         .from('war_reports')
         .select('*')
@@ -102,11 +113,15 @@ export function GameProvider({ children }) {
         .order('created_at', { ascending: false })
         .limit(10);
 
+      console.log('War reports:', reports);
+      console.log('Reports error:', reportsError);
+
       if (reportsError) {
         throw reportsError;
       }
       
       setWarReports(reports || []);
+      console.log('Game data fetching complete');
 
     } catch (error) {
       console.error('Error fetching game data:', error);
@@ -116,12 +131,15 @@ export function GameProvider({ children }) {
 
   async function createNewGameState(userId) {
     try {
+      console.log('Creating new game state for user:', userId);
       // Get user metadata for username
       const { data: { user } } = await supabase.auth.getUser();
       const username = user?.user_metadata?.username || 'Kingdom';
+      console.log('Username:', username);
 
       const newGameState = {
         id: userId,
+        username: username, 
         kingdom_name: `${username}'s Realm`,
         resources: {
           gold: 1000,
@@ -144,17 +162,22 @@ export function GameProvider({ children }) {
         last_resource_collection: new Date().toISOString()
       };
 
+      console.log('New game state to insert:', newGameState);
       const { data, error } = await supabase
         .from('game_states')
         .insert(newGameState)
         .select()
         .single();
 
+      console.log('Insert result data:', data);
+      console.log('Insert error:', error);
+
       if (error) {
         throw error;
       }
 
       setGameState(data);
+      console.log('Game state created and set successfully');
     } catch (error) {
       console.error('Error creating new game state:', error);
       setError('Failed to create new game state');
@@ -179,24 +202,11 @@ export function GameProvider({ children }) {
     }
   }
 
-  // Calculate total army power
-  function calculateArmyPower(army) {
-    return (army.swordsmen * 1) + 
-           (army.archers * 1.5) + 
-           (army.cavalry * 3) + 
-           (army.catapults * 5);
-  }
-
-  // Calculate defense power
-  function calculateDefensePower(army, castle) {
-    const armyPower = calculateArmyPower(army);
-    const defenseBonus = castle.defense_bonus / 100;
-    return armyPower * (1 + defenseBonus);
-  }
-
   // Attack another kingdom
   async function attackKingdom(targetKingdomId) {
     try {
+      console.log('Attacking kingdom with ID:', targetKingdomId);
+      
       // Get target kingdom data
       const { data: targetKingdom, error: targetError } = await supabase
         .from('game_states')
@@ -204,97 +214,247 @@ export function GameProvider({ children }) {
         .eq('id', targetKingdomId)
         .single();
 
+      console.log('Target kingdom data:', targetKingdom);
+      console.log('Target error:', targetError);
+
       if (targetError) {
         throw targetError;
       }
 
-      // Calculate attack power
+      if (!targetKingdom) {
+        throw new Error('Target kingdom not found');
+      }
+
+      // Ensure required objects exist
+      if (!gameState.army) {
+        console.error('Attacker army is missing');
+        throw new Error('Your army is not ready for battle');
+      }
+
+      if (!targetKingdom.army) {
+        console.error('Target army is missing');
+        throw new Error('Target kingdom has no army');
+      }
+
+      if (!targetKingdom.buildings || !targetKingdom.buildings.castle) {
+        console.warn('Target castle is missing, assuming level 1');
+        targetKingdom.buildings = targetKingdom.buildings || {};
+        targetKingdom.buildings.castle = { level: 1, defense_bonus: 10 };
+      }
+
+      // Calculate attack and defense power
       const attackPower = calculateArmyPower(gameState.army);
+      const defensePower = calculateDefensePower(targetKingdom.army, targetKingdom.buildings.castle);
       
-      // Calculate defense power
-      const defensePower = calculateDefensePower(
-        targetKingdom.army, 
-        targetKingdom.buildings.castle
-      );
-      
-      // Calculate attack/defense ratio
+      console.log('Attack power:', attackPower);
+      console.log('Defense power:', defensePower);
+
+      // Determine outcome
       const ratio = attackPower / defensePower;
+      const randomFactor = 0.8 + (Math.random() * 0.4); // Random factor between 0.8 and 1.2
+      const adjustedRatio = ratio * randomFactor;
       
-      // Calculate gold stolen based on ratio
-      let goldStolen = 0;
-      if (ratio >= 1) {
-        // Linear scaling between 1 and 2
-        const stealPercentage = ratio >= 2 ? 1 : (ratio - 1);
-        goldStolen = Math.floor(targetKingdom.resources.gold * stealPercentage);
+      console.log('Attack/Defense ratio:', ratio);
+      console.log('Adjusted ratio with random factor:', adjustedRatio);
+      
+      const victory = adjustedRatio > 1;
+      
+      // Calculate losses
+      let attackerLosses = {};
+      let defenderLosses = {};
+      let resourcesStolen = {};
+      
+      if (victory) {
+        // Attacker wins: fewer losses for attacker, more for defender
+        attackerLosses = calculateLosses(gameState.army, 0.1 + (0.2 / ratio));
+        defenderLosses = calculateLosses(targetKingdom.army, 0.3 + (0.3 / ratio));
+        
+        // Calculate resources stolen (if target has resources)
+        if (targetKingdom.resources) {
+          const stealPercent = 0.2 + (0.1 * adjustedRatio);
+          resourcesStolen = {
+            gold: Math.floor((targetKingdom.resources.gold || 0) * stealPercent),
+            food: Math.floor((targetKingdom.resources.food || 0) * stealPercent),
+            wood: Math.floor((targetKingdom.resources.wood || 0) * stealPercent),
+            stone: Math.floor((targetKingdom.resources.stone || 0) * stealPercent)
+          };
+        } else {
+          resourcesStolen = { gold: 0, food: 0, wood: 0, stone: 0 };
+        }
+      } else {
+        // Defender wins: more losses for attacker, fewer for defender
+        attackerLosses = calculateLosses(gameState.army, 0.3 + (0.3 * adjustedRatio));
+        defenderLosses = calculateLosses(targetKingdom.army, 0.1 + (0.1 * adjustedRatio));
+        resourcesStolen = { gold: 0, food: 0, wood: 0, stone: 0 };
       }
       
-      // Create war report
-      const warReport = {
-        attacker_id: user.id,
-        defender_id: targetKingdomId,
-        attacker_name: gameState.kingdom_name,
-        defender_name: targetKingdom.kingdom_name,
-        attacker_army: gameState.army,
-        defender_army: targetKingdom.army,
-        attack_power: attackPower,
-        defense_power: defensePower,
-        gold_stolen: goldStolen,
-        victory: ratio >= 1,
-        created_at: new Date().toISOString()
+      console.log('Attacker losses:', attackerLosses);
+      console.log('Defender losses:', defenderLosses);
+      console.log('Resources stolen:', resourcesStolen);
+
+      // Update attacker's army and resources
+      const updatedAttackerArmy = {
+        swordsmen: Math.max(0, (gameState.army.swordsmen || 0) - (attackerLosses.swordsmen || 0)),
+        archers: Math.max(0, (gameState.army.archers || 0) - (attackerLosses.archers || 0)),
+        cavalry: Math.max(0, (gameState.army.cavalry || 0) - (attackerLosses.cavalry || 0)),
+        catapults: Math.max(0, (gameState.army.catapults || 0) - (attackerLosses.catapults || 0))
       };
       
-      // Insert war report
+      const updatedAttackerResources = {
+        gold: (gameState.resources?.gold || 0) + (resourcesStolen.gold || 0),
+        food: (gameState.resources?.food || 0) + (resourcesStolen.food || 0),
+        wood: (gameState.resources?.wood || 0) + (resourcesStolen.wood || 0),
+        stone: (gameState.resources?.stone || 0) + (resourcesStolen.stone || 0)
+      };
+      
+      // Update defender's army and resources
+      const updatedDefenderArmy = {
+        swordsmen: Math.max(0, (targetKingdom.army.swordsmen || 0) - (defenderLosses.swordsmen || 0)),
+        archers: Math.max(0, (targetKingdom.army.archers || 0) - (defenderLosses.archers || 0)),
+        cavalry: Math.max(0, (targetKingdom.army.cavalry || 0) - (defenderLosses.cavalry || 0)),
+        catapults: Math.max(0, (targetKingdom.army.catapults || 0) - (defenderLosses.catapults || 0))
+      };
+      
+      const updatedDefenderResources = targetKingdom.resources ? {
+        gold: Math.max(0, (targetKingdom.resources.gold || 0) - (resourcesStolen.gold || 0)),
+        food: Math.max(0, (targetKingdom.resources.food || 0) - (resourcesStolen.food || 0)),
+        wood: Math.max(0, (targetKingdom.resources.wood || 0) - (resourcesStolen.wood || 0)),
+        stone: Math.max(0, (targetKingdom.resources.stone || 0) - (resourcesStolen.stone || 0))
+      } : { gold: 0, food: 0, wood: 0, stone: 0 };
+
+      // Create war report
+      const warReport = {
+        attacker_id: gameState.id,
+        defender_id: targetKingdom.id,
+        victory: victory,
+        report: {
+          attacker_name: gameState.kingdom_name,
+          defender_name: targetKingdom.kingdom_name,
+          attack_power: attackPower,
+          defense_power: defensePower,
+          attacker_losses: attackerLosses,
+          defender_losses: defenderLosses,
+          resources_stolen: resourcesStolen,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      console.log('War report to insert:', warReport);
+
+      // Update database
       const { error: reportError } = await supabase
         .from('war_reports')
         .insert(warReport);
         
+      console.log('Report insert error:', reportError);
+
       if (reportError) {
         throw reportError;
       }
-      
-      // Update attacker's gold
+
+      // Update attacker state
       const updatedAttackerState = {
         ...gameState,
-        resources: {
-          ...gameState.resources,
-          gold: gameState.resources.gold + goldStolen
-        }
+        army: updatedAttackerArmy,
+        resources: updatedAttackerResources
       };
       
-      // Update defender's gold
-      const updatedDefenderState = {
-        ...targetKingdom,
-        resources: {
-          ...targetKingdom.resources,
-          gold: targetKingdom.resources.gold - goldStolen
-        }
-      };
-      
-      // Update both kingdoms in database
-      const { error: updateError } = await supabase
+      const { error: attackerUpdateError } = await supabase
         .from('game_states')
-        .upsert([
-          updatedAttackerState,
-          updatedDefenderState
-        ]);
+        .update({
+          army: updatedAttackerArmy,
+          resources: updatedAttackerResources
+        })
+        .eq('id', gameState.id);
         
-      if (updateError) {
-        throw updateError;
+      console.log('Attacker update error:', attackerUpdateError);
+
+      if (attackerUpdateError) {
+        throw attackerUpdateError;
       }
-      
+
+      // Update defender state
+      const { error: defenderUpdateError } = await supabase
+        .from('game_states')
+        .update({
+          army: updatedDefenderArmy,
+          resources: updatedDefenderResources
+        })
+        .eq('id', targetKingdom.id);
+        
+      console.log('Defender update error:', defenderUpdateError);
+
+      if (defenderUpdateError) {
+        throw defenderUpdateError;
+      }
+
       // Update local state
       setGameState(updatedAttackerState);
       
-      // Fetch updated war reports
-      await fetchGameState(user.id);
-      
-      return warReport;
-      
+      // Return battle result for UI
+      return {
+        victory,
+        attackPower,
+        defensePower,
+        attackerLosses,
+        defenderLosses,
+        resourcesStolen
+      };
     } catch (error) {
       console.error('Error attacking kingdom:', error);
       setError('Failed to attack kingdom');
       return null;
     }
+  }
+
+  // Helper function to calculate army losses
+  function calculateLosses(army, lossPercentage) {
+    if (!army) return {};
+    
+    return {
+      swordsmen: Math.floor((army.swordsmen || 0) * lossPercentage),
+      archers: Math.floor((army.archers || 0) * lossPercentage),
+      cavalry: Math.floor((army.cavalry || 0) * lossPercentage),
+      catapults: Math.floor((army.catapults || 0) * lossPercentage)
+    };
+  }
+
+  // Calculate total army power
+  function calculateArmyPower(army) {
+    // Check if army is undefined or null
+    if (!army) {
+      console.warn('Army is undefined or null in calculateArmyPower');
+      return 0;
+    }
+    
+    // Ensure all army units exist, defaulting to 0 if not
+    const swordsmen = army.swordsmen || 0;
+    const archers = army.archers || 0;
+    const cavalry = army.cavalry || 0;
+    const catapults = army.catapults || 0;
+    
+    return (swordsmen * 1) + 
+           (archers * 1.5) + 
+           (cavalry * 3) + 
+           (catapults * 5);
+  }
+
+  // Calculate defense power
+  function calculateDefensePower(army, castle) {
+    // Check if army or castle is undefined or null
+    if (!army) {
+      console.warn('Army is undefined or null in calculateDefensePower');
+      return 0;
+    }
+    
+    if (!castle) {
+      console.warn('Castle is undefined or null in calculateDefensePower');
+      return calculateArmyPower(army); // Just use army power without bonus
+    }
+    
+    const armyPower = calculateArmyPower(army);
+    const defenseBonus = (castle.defense_bonus || 0) / 100;
+    return armyPower * (1 + defenseBonus);
   }
 
   // Collect resources
