@@ -21,20 +21,54 @@ export default function Home() {
     error, 
     setError,
     signOut,
-    collectResources
+    collectResources,
+    setGameState
   } = useGame();
   
   const [activeTab, setActiveTab] = useState('kingdom');
   const [notifications, setNotifications] = useState([]);
   const [loadingDetails, setLoadingDetails] = useState('Initializing...');
+  const [bypassLoading, setBypassLoading] = useState(false);
   const router = useRouter();
+
+  // Check for emergency mode on mount
+  useEffect(() => {
+    const checkEmergencyMode = () => {
+      const bypass = localStorage.getItem('bypass_loading');
+      if (bypass === 'true') {
+        console.log('*** KINGDOM DEBUG: Emergency mode activated, bypassing loading screen ***');
+        setBypassLoading(true);
+        
+        // Check for emergency game state
+        const emergencyStateStr = localStorage.getItem('emergency_game_state');
+        if (emergencyStateStr) {
+          try {
+            const emergencyState = JSON.parse(emergencyStateStr);
+            console.log('*** KINGDOM DEBUG: Using emergency game state ***', emergencyState);
+            setGameState(emergencyState);
+          } catch (error) {
+            console.error('*** KINGDOM DEBUG: Error parsing emergency game state ***', error);
+          }
+        }
+        
+        // Clear emergency flags after use
+        setTimeout(() => {
+          localStorage.removeItem('bypass_loading');
+          localStorage.removeItem('emergency_game_state');
+        }, 5000);
+      }
+    };
+    
+    checkEmergencyMode();
+    debug.log('Home', 'Home component mounted');
+  }, []);
 
   // Check if user is authenticated
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !user && !bypassLoading) {
       router.push('/login');
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, bypassLoading]);
 
   // Set up resource collection interval
   useEffect(() => {
@@ -108,7 +142,7 @@ export default function Home() {
   }, [user, gameState, loading, error]);
 
   // Show loading screen while data is being fetched
-  if (loading) {
+  if (loading && !bypassLoading) {
     debug.log('HomePage', 'Showing loading screen', { loadingDetails });
     return <LoadingScreen message={loadingDetails} />;
   }

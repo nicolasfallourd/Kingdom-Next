@@ -13,6 +13,7 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
   const [testResults, setTestResults] = useState(null);
   const [diagnosticResults, setDiagnosticResults] = useState(null);
   const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
+  const [showSkipButton, setShowSkipButton] = useState(false);
 
   useEffect(() => {
     // Force debug mode after 3 seconds
@@ -21,6 +22,11 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
       setShowDebugInfo(true);
       console.log('*** KINGDOM DEBUG: Force debug mode activated ***');
     }, 3000);
+    
+    // Show skip button after 10 seconds
+    const skipButtonTimeout = setTimeout(() => {
+      setShowSkipButton(true);
+    }, 10000);
     
     debug.log('LoadingScreen', 'Loading screen mounted', { message });
     console.log('*** KINGDOM DEBUG: LoadingScreen mounted ***');
@@ -76,6 +82,7 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
       clearInterval(dotsInterval);
       clearInterval(loadTimeInterval);
       clearTimeout(forceDebugTimeout);
+      clearTimeout(skipButtonTimeout);
       console.log = originalConsoleLog;
       console.error = originalConsoleError;
       console.warn = originalConsoleWarn;
@@ -92,6 +99,62 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
     console.log('*** KINGDOM DEBUG: Force reloading page ***');
     localStorage.setItem('debug_enabled', 'true');
     window.location.reload();
+  };
+  
+  // Skip loading function
+  const skipLoading = async () => {
+    console.log('*** KINGDOM DEBUG: Skipping loading process ***');
+    try {
+      // Import dependencies
+      const { supabase } = await import('../lib/supabase');
+      const { useGame } = await import('../contexts/GameContext');
+      
+      // Get current session
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session && session.user) {
+        console.log('*** KINGDOM DEBUG: Creating emergency game state ***');
+        
+        // Create emergency game state
+        const emergencyGameState = {
+          id: session.user.id,
+          kingdom_name: 'Emergency Kingdom',
+          resources: { gold: 1000, food: 500, wood: 300, stone: 200 },
+          buildings: { castle: { level: 1 }, barracks: { level: 1 }, farm: { level: 1 }, mine: { level: 1 } },
+          army: { swordsmen: 10, archers: 5, cavalry: 0, catapults: 0 },
+          last_resource_collection: new Date().toISOString()
+        };
+        
+        // Try to save emergency state to database
+        try {
+          const { error } = await supabase
+            .from('game_states')
+            .upsert(emergencyGameState, { onConflict: 'id' });
+            
+          if (error) {
+            console.error('*** KINGDOM DEBUG: Error saving emergency game state ***', error);
+          } else {
+            console.log('*** KINGDOM DEBUG: Emergency game state saved ***');
+          }
+        } catch (dbError) {
+          console.error('*** KINGDOM DEBUG: Database error saving emergency state ***', dbError);
+        }
+        
+        // Force reload with bypass flag
+        localStorage.setItem('bypass_loading', 'true');
+        localStorage.setItem('emergency_game_state', JSON.stringify(emergencyGameState));
+        window.location.reload();
+      } else {
+        console.error('*** KINGDOM DEBUG: No active session found for emergency state ***');
+        // Redirect to login page
+        window.location.href = '/login';
+      }
+    } catch (error) {
+      console.error('*** KINGDOM DEBUG: Error in skipLoading ***', error);
+      // Force reload as fallback
+      localStorage.setItem('bypass_loading', 'true');
+      window.location.reload();
+    }
   };
   
   // Test connection function
@@ -196,6 +259,30 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
             {connectionStatus}
           </span>
         </div>
+        
+        {showSkipButton && (
+          <div style={{ marginTop: '15px' }}>
+            <button
+              onClick={skipLoading}
+              style={{
+                padding: '8px 15px',
+                border: '2px solid #ff9800',
+                background: '#fff3e0',
+                color: '#e65100',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '14px',
+                borderRadius: '4px'
+              }}
+            >
+              ⚠️ Skip Loading (Emergency Mode)
+            </button>
+            <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>
+              Use this if you're stuck on the loading screen for too long
+            </div>
+          </div>
+        )}
         
         {(showDebugButton || forceDebug) && (
           <div style={{ marginTop: '20px' }}>
@@ -389,6 +476,7 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
               <li>Check the recommendations in the diagnostic results</li>
               <li>Visit the Supabase dashboard to verify your project is active</li>
               <li>Check browser console (F12) for more detailed errors</li>
+              <li>If all else fails, use the "Skip Loading" button to enter emergency mode</li>
             </ol>
           </div>
         )}

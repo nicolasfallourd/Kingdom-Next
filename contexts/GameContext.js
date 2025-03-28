@@ -42,6 +42,14 @@ export function GameProvider({ children }) {
           debug.log('GameContext', 'User authenticated, fetching game state', { userId: session.user.id });
           console.log(`*** KINGDOM DEBUG: User authenticated, fetching game state for ${session.user.id} ***`);
           
+          // Check if we're in emergency mode
+          const bypass = localStorage.getItem('bypass_loading');
+          if (bypass === 'true') {
+            console.log('*** KINGDOM DEBUG: Emergency mode detected in auth listener, skipping fetchGameState ***');
+            setLoading(false);
+            return;
+          }
+          
           try {
             await fetchGameState(session.user.id);
           } catch (err) {
@@ -89,6 +97,14 @@ export function GameProvider({ children }) {
         setUser(session.user);
         debug.log('GameContext', 'User authenticated, fetching game state', { userId: session.user.id });
         
+        // Check if we're in emergency mode
+        const bypass = localStorage.getItem('bypass_loading');
+        if (bypass === 'true') {
+          console.log('*** KINGDOM DEBUG: Emergency mode detected in checkUser, skipping fetchGameState ***');
+          setLoading(false);
+          return;
+        }
+        
         try {
           await fetchGameState(session.user.id);
         } catch (err) {
@@ -109,6 +125,23 @@ export function GameProvider({ children }) {
     }
   }
 
+  async function handleEmergencyMode() {
+    try {
+      console.log('*** KINGDOM DEBUG: handleEmergencyMode started ***');
+      const bypass = localStorage.getItem('bypass_loading');
+      if (bypass === 'true') {
+        console.log('*** KINGDOM DEBUG: Emergency mode already active ***');
+        return;
+      }
+      
+      localStorage.setItem('bypass_loading', 'true');
+      setLoading(false);
+      console.log('*** KINGDOM DEBUG: Emergency mode activated ***');
+    } catch (error) {
+      console.error('*** KINGDOM DEBUG: Error in handleEmergencyMode ***', error);
+    }
+  }
+
   async function fetchGameState(userId) {
     console.log('*** KINGDOM DEBUG: fetchGameState started for user:', userId, '***');
     try {
@@ -125,122 +158,176 @@ export function GameProvider({ children }) {
       
       console.log('*** KINGDOM DEBUG: Supabase connection test successful ***', connectionTest);
       
-      // Fetch game state with timeout
-      console.log('*** KINGDOM DEBUG: Fetching game state data ***');
+      // Set a global timeout for the entire fetchGameState operation
+      const globalTimeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          const timeoutError = new Error('Global fetchGameState timeout after 15 seconds');
+          console.error('*** KINGDOM DEBUG: TIMEOUT ERROR ***', timeoutError);
+          reject(timeoutError);
+        }, 15000);
+      });
       
-      // Set up a timeout for the fetch operation
-      const fetchWithTimeout = async () => {
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Fetch game state timeout after 5 seconds')), 5000);
-        });
-        
-        const fetchPromise = supabase
-          .from('game_states')
-          .select('*')
-          .eq('id', userId)
-          .single();
+      // Create a promise for the actual fetch operation
+      const fetchOperationPromise = (async () => {
+        try {
+          // Fetch game state with timeout
+          console.log('*** KINGDOM DEBUG: Fetching game state data ***');
           
-        return Promise.race([fetchPromise, timeoutPromise]);
-      };
-      
-      const { data: gameStateData, error: gameStateError } = await fetchWithTimeout();
-
-      console.log('*** KINGDOM DEBUG: Game state data ***', gameStateData);
-      console.log('*** KINGDOM DEBUG: Game state error ***', gameStateError);
-      debug.log('GameContext', 'Game state data:', gameStateData);
-      debug.log('GameContext', 'Game state error:', gameStateError);
-
-      if (gameStateError && gameStateError.code !== 'PGRST116') {
-        console.error('*** KINGDOM DEBUG: Error fetching game state ***', gameStateError);
-        throw gameStateError;
-      }
-
-      // If no game state exists, create a new one
-      if (!gameStateData) {
-        console.log('*** KINGDOM DEBUG: No game state found, creating new one ***');
-        debug.log('GameContext', 'No game state found, creating new one');
-        await createNewGameState(userId);
-      } else {
-        console.log('*** KINGDOM DEBUG: Setting game state ***', gameStateData);
-        debug.log('GameContext', 'Setting game state:', gameStateData);
-        setGameState(gameStateData);
-      }
-
-      // Fetch other kingdoms
-      console.log('*** KINGDOM DEBUG: Fetching other kingdoms ***');
-      debug.log('GameContext', 'Fetching other kingdoms');
-      
-      // Log the current user ID for debugging
-      console.log('*** KINGDOM DEBUG: Current user ID for other kingdoms query ***', userId);
-      
-      try {
-        // First check how many total game states exist
-        const { data: totalCount, error: countError } = await supabase
-          .from('game_states')
-          .select('id', { count: 'exact', head: true });
+          // Set up a timeout for the fetch operation
+          const fetchWithTimeout = async () => {
+            const timeoutPromise = new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('Fetch game state timeout after 5 seconds')), 5000);
+            });
+            
+            const fetchPromise = supabase
+              .from('game_states')
+              .select('*')
+              .eq('id', userId)
+              .single();
+              
+            return Promise.race([fetchPromise, timeoutPromise]);
+          };
           
-        console.log('*** KINGDOM DEBUG: Total game states count ***', totalCount);
-        
-        if (countError) {
-          console.error('*** KINGDOM DEBUG: Error counting game states ***', countError);
+          const { data: gameStateData, error: gameStateError } = await fetchWithTimeout();
+
+          console.log('*** KINGDOM DEBUG: Game state data ***', gameStateData);
+          console.log('*** KINGDOM DEBUG: Game state error ***', gameStateError);
+          debug.log('GameContext', 'Game state data:', gameStateData);
+          debug.log('GameContext', 'Game state error:', gameStateError);
+
+          if (gameStateError && gameStateError.code !== 'PGRST116') {
+            console.error('*** KINGDOM DEBUG: Error fetching game state ***', gameStateError);
+            throw gameStateError;
+          }
+
+          // If no game state exists, create a new one
+          if (!gameStateData) {
+            console.log('*** KINGDOM DEBUG: No game state found, creating new one ***');
+            debug.log('GameContext', 'No game state found, creating new one');
+            await createNewGameState(userId);
+          } else {
+            console.log('*** KINGDOM DEBUG: Setting game state ***', gameStateData);
+            debug.log('GameContext', 'Setting game state:', gameStateData);
+            setGameState(gameStateData);
+          }
+
+          // Fetch other kingdoms
+          console.log('*** KINGDOM DEBUG: Fetching other kingdoms ***');
+          debug.log('GameContext', 'Fetching other kingdoms');
+          
+          // Log the current user ID for debugging
+          console.log('*** KINGDOM DEBUG: Current user ID for other kingdoms query ***', userId);
+          
+          try {
+            // First check how many total game states exist
+            const { data: totalCount, error: countError } = await supabase
+              .from('game_states')
+              .select('id', { count: 'exact', head: true });
+              
+            console.log('*** KINGDOM DEBUG: Total game states count ***', totalCount);
+            
+            if (countError) {
+              console.error('*** KINGDOM DEBUG: Error counting game states ***', countError);
+            }
+            
+            // Now fetch other kingdoms
+            const { data: kingdoms, error: kingdomsError } = await supabase
+              .from('game_states')
+              .select('id, kingdom_name, buildings, army')
+              .neq('id', userId)
+              .limit(10);
+
+            console.log('*** KINGDOM DEBUG: Other kingdoms query ***', {
+              query: `FROM game_states SELECT id, kingdom_name, buildings, army WHERE id != ${userId} LIMIT 10`,
+              results: kingdoms ? kingdoms.length : 0
+            });
+            console.log('*** KINGDOM DEBUG: Other kingdoms ***', kingdoms);
+            console.log('*** KINGDOM DEBUG: Kingdoms error ***', kingdomsError);
+            debug.log('GameContext', 'Other kingdoms:', kingdoms);
+            debug.log('GameContext', 'Kingdoms error:', kingdomsError);
+
+            if (kingdomsError) {
+              console.error('*** KINGDOM DEBUG: Error fetching other kingdoms ***', kingdomsError);
+              throw kingdomsError;
+            }
+            
+            setOtherKingdoms(kingdoms || []);
+          } catch (error) {
+            console.error('*** KINGDOM DEBUG: Exception in other kingdoms fetch ***', error);
+            // Don't throw here, just log the error and continue
+            setOtherKingdoms([]);
+          }
+
+          // Fetch war reports
+          console.log('*** KINGDOM DEBUG: Fetching war reports ***');
+          debug.log('GameContext', 'Fetching war reports');
+          try {
+            const { data: reports, error: reportsError } = await supabase
+              .from('war_reports')
+              .select('*')
+              .or(`attacker_id.eq.${userId},defender_id.eq.${userId}`)
+              .order('created_at', { ascending: false })
+              .limit(10);
+
+            console.log('*** KINGDOM DEBUG: War reports ***', reports);
+            console.log('*** KINGDOM DEBUG: Reports error ***', reportsError);
+            debug.log('GameContext', 'War reports:', reports);
+            debug.log('GameContext', 'Reports error:', reportsError);
+
+            if (reportsError) {
+              console.error('*** KINGDOM DEBUG: Error fetching war reports ***', reportsError);
+              throw reportsError;
+            }
+            
+            setWarReports(reports || []);
+          } catch (error) {
+            console.error('*** KINGDOM DEBUG: Exception in war reports fetch ***', error);
+            // Don't throw here, just log the error and continue
+            setWarReports([]);
+          }
+          
+          console.log('*** KINGDOM DEBUG: Game data fetching complete ***');
+          debug.log('GameContext', 'Game data fetching complete');
+          
+          // Explicitly set loading to false here to ensure we exit the loading state
+          setLoading(false);
+          
+          return true; // Signal successful completion
+        } catch (error) {
+          console.error('*** KINGDOM DEBUG: Error in fetchGameState inner try/catch ***', error);
+          throw error;
         }
-        
-        // Now fetch other kingdoms
-        const { data: kingdoms, error: kingdomsError } = await supabase
-          .from('game_states')
-          .select('id, kingdom_name, buildings, army')
-          .neq('id', userId)
-          .limit(10);
-
-        console.log('*** KINGDOM DEBUG: Other kingdoms query ***', {
-          query: `FROM game_states SELECT id, kingdom_name, buildings, army WHERE id != ${userId} LIMIT 10`,
-          results: kingdoms ? kingdoms.length : 0
-        });
-        console.log('*** KINGDOM DEBUG: Other kingdoms ***', kingdoms);
-        console.log('*** KINGDOM DEBUG: Kingdoms error ***', kingdomsError);
-        debug.log('GameContext', 'Other kingdoms:', kingdoms);
-        debug.log('GameContext', 'Kingdoms error:', kingdomsError);
-
-        if (kingdomsError) {
-          console.error('*** KINGDOM DEBUG: Error fetching other kingdoms ***', kingdomsError);
-          throw kingdomsError;
-        }
-        
-        setOtherKingdoms(kingdoms || []);
-      } catch (error) {
-        console.error('*** KINGDOM DEBUG: Exception in other kingdoms fetch ***', error);
-        // Don't throw here, just log the error and continue
-        setOtherKingdoms([]);
-      }
-
-      // Fetch war reports
-      console.log('*** KINGDOM DEBUG: Fetching war reports ***');
-      debug.log('GameContext', 'Fetching war reports');
-      const { data: reports, error: reportsError } = await supabase
-        .from('war_reports')
-        .select('*')
-        .or(`attacker_id.eq.${userId},defender_id.eq.${userId}`)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      console.log('*** KINGDOM DEBUG: War reports ***', reports);
-      console.log('*** KINGDOM DEBUG: Reports error ***', reportsError);
-      debug.log('GameContext', 'War reports:', reports);
-      debug.log('GameContext', 'Reports error:', reportsError);
-
-      if (reportsError) {
-        console.error('*** KINGDOM DEBUG: Error fetching war reports ***', reportsError);
-        throw reportsError;
-      }
+      })();
       
-      setWarReports(reports || []);
-      console.log('*** KINGDOM DEBUG: Game data fetching complete ***');
-      debug.log('GameContext', 'Game data fetching complete');
+      // Race the fetch operation against the global timeout
+      await Promise.race([fetchOperationPromise, globalTimeoutPromise]);
 
     } catch (error) {
       console.error('*** KINGDOM DEBUG: Error in fetchGameState ***', error);
       console.error('Error fetching game data:', error);
       setError(`Failed to fetch game data: ${error.message}`);
+      
+      // Force loading to false even if there's an error
+      setLoading(false);
+      
+      // Create a minimal game state to prevent getting stuck
+      if (!gameState) {
+        console.log('*** KINGDOM DEBUG: Creating emergency minimal game state due to error ***');
+        try {
+          const minimalGameState = {
+            id: userId,
+            kingdom_name: 'Emergency Kingdom',
+            resources: { gold: 1000, food: 500, wood: 300, stone: 200 },
+            buildings: { castle: { level: 1 } },
+            army: { swordsmen: 10 },
+            last_resource_collection: new Date().toISOString()
+          };
+          setGameState(minimalGameState);
+        } catch (emergencyError) {
+          console.error('*** KINGDOM DEBUG: Failed to create emergency game state ***', emergencyError);
+        }
+      }
+      
       throw error;
     }
   }
@@ -805,6 +892,7 @@ export function GameProvider({ children }) {
     upgradeBuilding,
     trainTroops,
     signOut,
+    handleEmergencyMode,
     calculateArmyPower,
     calculateDefensePower
   };
