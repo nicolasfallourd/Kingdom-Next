@@ -26,21 +26,35 @@ export default function Register() {
         options: {
           data: {
             username: name
-          }
+          },
+          emailRedirectTo: window.location.origin,
+          // Disable email confirmation requirement
+          emailConfirm: false
         }
       });
 
       if (error) throw error;
       
-      setMessage({ 
-        text: 'Registration successful! You can now log in.', 
-        isError: false 
+      // Auto sign in after registration without waiting for email confirmation
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
       });
       
-      // Redirect to login after a short delay
-      setTimeout(() => {
-        router.push('/login');
-      }, 2000);
+      if (signInError) {
+        setMessage({ 
+          text: 'Registration successful! You can now log in.', 
+          isError: false 
+        });
+        
+        // Redirect to login after a short delay
+        setTimeout(() => {
+          router.push('/login');
+        }, 2000);
+      } else {
+        // If sign-in was successful, redirect to the game
+        router.push('/');
+      }
       
     } catch (error) {
       setMessage({ text: error.message, isError: true });

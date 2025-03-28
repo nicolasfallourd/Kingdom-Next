@@ -20,12 +20,57 @@ export default function Login() {
       // Create a deterministic email from the name for Supabase auth
       const email = `${name.toLowerCase().replace(/\s+/g, '_')}@kingdom-game.com`;
       
+      // Try to sign in
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
-      if (error) throw error;
+      // If there's an error about unconfirmed email
+      if (error && error.message.includes('Email not confirmed')) {
+        // Try to update the user to bypass email confirmation
+        const { data: updateData, error: updateError } = await supabase.auth.updateUser({
+          email_confirm: true
+        });
+        
+        if (updateError) {
+          // If update fails, try to sign up again with auto-confirmation
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                username: name
+              },
+              emailRedirectTo: window.location.origin,
+              emailConfirm: false
+            }
+          });
+          
+          if (signUpError) throw signUpError;
+          
+          // Try to sign in again after signup
+          const { error: retryError } = await supabase.auth.signInWithPassword({
+            email,
+            password
+          });
+          
+          if (retryError) throw retryError;
+        } else {
+          // If update succeeds, try to sign in again
+          const { error: retryError } = await supabase.auth.signInWithPassword({
+            email,
+            password
+          });
+          
+          if (retryError) throw retryError;
+        }
+      } else if (error) {
+        // For other errors, throw them
+        throw error;
+      }
+      
+      // If we get here, either the initial sign-in worked or we fixed the issue
       router.push('/');
     } catch (error) {
       setMessage({ text: error.message, isError: true });
@@ -55,7 +100,9 @@ export default function Login() {
         options: {
           data: {
             username: guestName
-          }
+          },
+          emailRedirectTo: window.location.origin,
+          emailConfirm: false
         }
       });
       
