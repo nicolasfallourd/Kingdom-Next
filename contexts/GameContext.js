@@ -310,6 +310,7 @@ export function GameProvider({ children }) {
   async function updateGameState(newState) {
     try {
       console.log('*** KINGDOM DEBUG: updateGameState started ***');
+      console.log('*** KINGDOM DEBUG: New state to update ***', JSON.stringify(newState));
       
       // Check if the state is actually different before updating
       // This prevents infinite update loops
@@ -343,6 +344,17 @@ export function GameProvider({ children }) {
       // Set state immediately for UI responsiveness
       setGameState(newState);
       
+      // Prepare the update data - ensure we're sending the complete object
+      // This is important for JSONB columns in Supabase
+      const updateData = {
+        resources: newState.resources,
+        army: newState.army,
+        buildings: newState.buildings,
+        last_resource_collection: newState.last_resource_collection
+      };
+      
+      console.log('*** KINGDOM DEBUG: Sending update to Supabase ***', updateData);
+      
       // Simple update with timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
@@ -350,7 +362,7 @@ export function GameProvider({ children }) {
       try {
         const { error } = await supabase
           .from('game_states')
-          .update(newState)
+          .update(updateData)
           .eq('id', user.id)
           .abortSignal(controller.signal);
         
@@ -363,6 +375,23 @@ export function GameProvider({ children }) {
         }
         
         console.log('*** KINGDOM DEBUG: Game state updated successfully ***');
+        
+        // Verify the update by fetching the latest state
+        try {
+          const { data: verifyData, error: verifyError } = await supabase
+            .from('game_states')
+            .select('army')
+            .eq('id', user.id)
+            .single();
+            
+          if (verifyError) {
+            console.error('*** KINGDOM DEBUG: Error verifying update ***', verifyError);
+          } else {
+            console.log('*** KINGDOM DEBUG: Verified army after update ***', verifyData?.army);
+          }
+        } catch (verifyError) {
+          console.error('*** KINGDOM DEBUG: Exception verifying update ***', verifyError);
+        }
       } catch (error) {
         clearTimeout(timeoutId);
         console.error('*** KINGDOM DEBUG: Update error ***', error);
@@ -744,16 +773,45 @@ export function GameProvider({ children }) {
       updatedState.resources.gold -= totalGoldCost;
       updatedState.resources.food -= totalFoodCost;
       
-      // Update army
+      // Update army - ensure the property exists first
+      if (!updatedState.army) {
+        updatedState.army = {};
+      }
+      if (updatedState.army[troopType] === undefined) {
+        updatedState.army[troopType] = 0;
+      }
       updatedState.army[troopType] += count;
       
       console.log('*** KINGDOM DEBUG: Updated army ***', {
         oldArmy: gameState.army,
-        newArmy: updatedState.army
+        newArmy: updatedState.army,
+        troopsBefore: gameState.army[troopType],
+        troopsAfter: updatedState.army[troopType]
       });
       
-      // Update in database with explicit army object
-      await updateGameState(updatedState);
+      // Create a specific update object for Supabase
+      const updateObject = {
+        resources: updatedState.resources,
+        army: updatedState.army
+      };
+      
+      console.log('*** KINGDOM DEBUG: Direct update to Supabase ***', JSON.stringify(updateObject));
+      
+      // Update directly in Supabase first
+      const { error: directError } = await supabase
+        .from('game_states')
+        .update(updateObject)
+        .eq('id', user.id);
+        
+      if (directError) {
+        console.error('*** KINGDOM DEBUG: Direct update error ***', directError);
+        throw directError;
+      }
+      
+      // Then update local state
+      setGameState(updatedState);
+      
+      console.log('*** KINGDOM DEBUG: Troop training complete ***');
       
       return updatedState.army;
       
