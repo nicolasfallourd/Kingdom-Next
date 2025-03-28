@@ -96,53 +96,109 @@ export default function Home() {
         <meta name="description" content="Medieval-themed Kingdom Management Game" />
       </Head>
 
-      <div className="container">
+      <div style={{ 
+        width: '100%', 
+        maxWidth: '1200px', 
+        margin: '0 auto', 
+        padding: '20px',
+        fontFamily: 'monospace'
+      }}>
         {/* Game Header */}
-        <div className="game-header">
-          <h1>Kingdom Management Game</h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ 
+          padding: '20px', 
+          borderBottom: '1px solid black',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <h1 style={{ fontWeight: 'normal' }}>Kingdom Management Game</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             {gameState && (
-              <div className="resource-display">
-                <span className="resource-icon">💰</span>
-                <span>{gameState.resources.gold}</span>
-                <span className="resource-icon">🍖</span>
-                <span>{gameState.resources.food}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontWeight: 'bold' }}>💰</span>
+                <span className="number-neutral">{gameState.resources.gold}</span>
+                <span style={{ fontWeight: 'bold' }}>🍖</span>
+                <span className="number-neutral">{gameState.resources.food}</span>
               </div>
             )}
-            <button onClick={handleSignOut} className="btn btn-danger">Logout</button>
+            <button 
+              onClick={handleSignOut} 
+              style={{ 
+                padding: '8px 16px', 
+                border: '1px solid black',
+                background: 'white',
+                cursor: 'pointer',
+                fontFamily: 'monospace'
+              }}
+            >
+              Logout
+            </button>
           </div>
         </div>
 
         {/* Game Content */}
-        <div className="card">
+        <div style={{ 
+          border: '1px solid black', 
+          padding: '20px',
+          marginTop: '20px'
+        }}>
           {/* Tab Navigation */}
-          <div className="tabs">
+          <div style={{ 
+            display: 'flex', 
+            borderBottom: '1px solid black',
+            marginBottom: '20px'
+          }}>
             <div 
-              className={`tab ${activeTab === 'kingdom' ? 'active' : ''}`}
+              style={{ 
+                padding: '10px 20px', 
+                cursor: 'pointer',
+                borderBottom: activeTab === 'kingdom' ? '1px solid black' : 'none',
+                fontWeight: activeTab === 'kingdom' ? 'bold' : 'normal'
+              }}
               onClick={() => handleTabChange('kingdom')}
             >
               Kingdom
             </div>
             <div 
-              className={`tab ${activeTab === 'resources' ? 'active' : ''}`}
+              style={{ 
+                padding: '10px 20px', 
+                cursor: 'pointer',
+                borderBottom: activeTab === 'resources' ? '1px solid black' : 'none',
+                fontWeight: activeTab === 'resources' ? 'bold' : 'normal'
+              }}
               onClick={() => handleTabChange('resources')}
             >
               Resources
             </div>
             <div 
-              className={`tab ${activeTab === 'army' ? 'active' : ''}`}
+              style={{ 
+                padding: '10px 20px', 
+                cursor: 'pointer',
+                borderBottom: activeTab === 'army' ? '1px solid black' : 'none',
+                fontWeight: activeTab === 'army' ? 'bold' : 'normal'
+              }}
               onClick={() => handleTabChange('army')}
             >
               Army
             </div>
             <div 
-              className={`tab ${activeTab === 'world' ? 'active' : ''}`}
+              style={{ 
+                padding: '10px 20px', 
+                cursor: 'pointer',
+                borderBottom: activeTab === 'world' ? '1px solid black' : 'none',
+                fontWeight: activeTab === 'world' ? 'bold' : 'normal'
+              }}
               onClick={() => handleTabChange('world')}
             >
               World
             </div>
             <div 
-              className={`tab ${activeTab === 'war' ? 'active' : ''}`}
+              style={{ 
+                padding: '10px 20px', 
+                cursor: 'pointer',
+                borderBottom: activeTab === 'war' ? '1px solid black' : 'none',
+                fontWeight: activeTab === 'war' ? 'bold' : 'normal'
+              }}
               onClick={() => handleTabChange('war')}
             >
               War
@@ -151,7 +207,7 @@ export default function Home() {
 
           {/* Tab Content */}
           {gameState && (
-            <div className="tab-content">
+            <div>
               {activeTab === 'kingdom' && <KingdomTab addNotification={addNotification} />}
               {activeTab === 'resources' && <ResourcesTab addNotification={addNotification} />}
               {activeTab === 'army' && <ArmyTab addNotification={addNotification} />}
@@ -163,7 +219,15 @@ export default function Home() {
       </div>
 
       {/* Notifications */}
-      <div className="notification-area">
+      <div style={{ 
+        position: 'fixed', 
+        top: '20px', 
+        right: '20px', 
+        zIndex: 1000,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px'
+      }}>
         {notifications.map(notification => (
           <Notification 
             key={notification.id}

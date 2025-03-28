@@ -8,13 +8,20 @@ export default function LoadingScreen() {
       alignItems: 'center',
       justifyContent: 'center',
       height: '100vh',
-      backgroundColor: 'var(--color-background)'
+      backgroundColor: 'white',
+      fontFamily: 'monospace'
     }}>
-      <h1 style={{ marginBottom: '2rem', color: 'var(--color-text-important)' }}>
+      <h1 style={{ 
+        marginBottom: '30px', 
+        color: 'black',
+        fontWeight: 'normal'
+      }}>
         Kingdom Management Game
       </h1>
-      <div className="spinner"></div>
-      <p style={{ marginTop: '1rem', color: 'var(--color-text)' }}>
+      <p style={{ 
+        marginTop: '20px', 
+        color: 'black'
+      }}>
         Loading your kingdom...
       </p>
     </div>
