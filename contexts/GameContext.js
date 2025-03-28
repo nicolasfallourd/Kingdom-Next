@@ -311,6 +311,13 @@ export function GameProvider({ children }) {
     try {
       console.log('*** KINGDOM DEBUG: updateGameState started ***');
       
+      // Check if the state is actually different before updating
+      // This prevents infinite update loops
+      if (gameState && JSON.stringify(gameState) === JSON.stringify(newState)) {
+        console.log('*** KINGDOM DEBUG: State unchanged, skipping update ***');
+        return;
+      }
+      
       // Set state immediately for UI responsiveness
       setGameState(newState);
       

@@ -72,7 +72,7 @@ export default function Home() {
 
   // Set up resource collection interval
   useEffect(() => {
-    if (gameState) {
+    if (gameState && gameState.id) {
       // Collect resources immediately when game loads
       handleCollectResources();
       
@@ -81,7 +81,7 @@ export default function Home() {
       
       return () => clearInterval(interval);
     }
-  }, [gameState]);
+  }, [gameState?.id]);
 
   // Handle resource collection
   const handleCollectResources = async () => {
