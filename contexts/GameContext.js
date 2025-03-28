@@ -22,24 +22,41 @@ export function GameProvider({ children }) {
   useEffect(() => {
     debug.setupGlobalErrorHandling();
     debug.log('GameContext', 'GameProvider initialized');
+    
+    // Add direct console logging for debugging
+    console.log('*** KINGDOM DEBUG: GameProvider initialized ***');
   }, []);
 
   // Check for user session on mount
   useEffect(() => {
     debug.log('GameContext', 'Setting up auth listener');
+    console.log('*** KINGDOM DEBUG: Setting up auth listener ***');
+    
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         debug.log('GameContext', `Auth state changed: ${event}`, session);
+        console.log(`*** KINGDOM DEBUG: Auth state changed: ${event} ***`, session?.user?.id || 'No user');
+        
         if (session) {
           setUser(session.user);
           debug.log('GameContext', 'User authenticated, fetching game state', { userId: session.user.id });
-          await fetchGameState(session.user.id);
+          console.log(`*** KINGDOM DEBUG: User authenticated, fetching game state for ${session.user.id} ***`);
+          
+          try {
+            await fetchGameState(session.user.id);
+          } catch (err) {
+            console.error('*** KINGDOM DEBUG: Error in fetchGameState ***', err);
+            setError(`Error fetching game state: ${err.message}`);
+            setLoading(false);
+          }
         } else {
           debug.log('GameContext', 'No active session, clearing user and game state');
+          console.log('*** KINGDOM DEBUG: No active session, clearing user and game state ***');
           setUser(null);
           setGameState(null);
           if (router.pathname !== '/login' && router.pathname !== '/register') {
             debug.log('GameContext', 'Redirecting to login');
+            console.log('*** KINGDOM DEBUG: Redirecting to login ***');
             router.push('/login');
           }
         }
@@ -52,57 +69,96 @@ export function GameProvider({ children }) {
 
     return () => {
       debug.log('GameContext', 'Cleaning up auth listener');
+      console.log('*** KINGDOM DEBUG: Cleaning up auth listener ***');
       authListener?.subscription.unsubscribe();
     };
   }, []);
 
   async function checkUser() {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      console.log('*** KINGDOM DEBUG: Checking user session ***');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('*** KINGDOM DEBUG: Session error ***', sessionError);
+        throw sessionError;
+      }
+      
       if (session) {
+        console.log(`*** KINGDOM DEBUG: Session found for user ${session.user.id} ***`);
         setUser(session.user);
         debug.log('GameContext', 'User authenticated, fetching game state', { userId: session.user.id });
-        await fetchGameState(session.user.id);
+        
+        try {
+          await fetchGameState(session.user.id);
+        } catch (err) {
+          console.error('*** KINGDOM DEBUG: Error in fetchGameState during checkUser ***', err);
+          setError(`Error fetching game state: ${err.message}`);
+        }
       } else {
+        console.log('*** KINGDOM DEBUG: No session found ***');
         debug.log('GameContext', 'No active session, clearing user and game state');
         setUser(null);
         setGameState(null);
       }
     } catch (error) {
-      console.error('Error checking user:', error);
-      setError('Failed to check authentication status');
+      console.error('*** KINGDOM DEBUG: Error in checkUser ***', error);
+      setError(`Session error: ${error.message}`);
     } finally {
       setLoading(false);
     }
   }
 
   async function fetchGameState(userId) {
+    console.log('*** KINGDOM DEBUG: fetchGameState started for user:', userId, '***');
     try {
       debug.log('GameContext', 'Fetching game state for user:', userId);
+      
+      // Test Supabase connection first
+      console.log('*** KINGDOM DEBUG: Testing Supabase connection ***');
+      const { data: testData, error: testError } = await supabase
+        .from('game_states')
+        .select('count')
+        .limit(1);
+        
+      if (testError) {
+        console.error('*** KINGDOM DEBUG: Supabase connection test failed ***', testError);
+        throw new Error(`Supabase connection error: ${testError.message}`);
+      }
+      
+      console.log('*** KINGDOM DEBUG: Supabase connection test successful ***', testData);
+      
       // Fetch game state
+      console.log('*** KINGDOM DEBUG: Fetching game state data ***');
       const { data: gameStateData, error: gameStateError } = await supabase
         .from('game_states')
         .select('*')
         .eq('id', userId)
         .single();
 
+      console.log('*** KINGDOM DEBUG: Game state data ***', gameStateData);
+      console.log('*** KINGDOM DEBUG: Game state error ***', gameStateError);
       debug.log('GameContext', 'Game state data:', gameStateData);
       debug.log('GameContext', 'Game state error:', gameStateError);
 
       if (gameStateError && gameStateError.code !== 'PGRST116') {
+        console.error('*** KINGDOM DEBUG: Error fetching game state ***', gameStateError);
         throw gameStateError;
       }
 
       // If no game state exists, create a new one
       if (!gameStateData) {
+        console.log('*** KINGDOM DEBUG: No game state found, creating new one ***');
         debug.log('GameContext', 'No game state found, creating new one');
         await createNewGameState(userId);
       } else {
+        console.log('*** KINGDOM DEBUG: Setting game state ***', gameStateData);
         debug.log('GameContext', 'Setting game state:', gameStateData);
         setGameState(gameStateData);
       }
 
       // Fetch other kingdoms
+      console.log('*** KINGDOM DEBUG: Fetching other kingdoms ***');
       debug.log('GameContext', 'Fetching other kingdoms');
       const { data: kingdoms, error: kingdomsError } = await supabase
         .from('game_states')
@@ -110,16 +166,20 @@ export function GameProvider({ children }) {
         .neq('id', userId)
         .limit(10);
 
+      console.log('*** KINGDOM DEBUG: Other kingdoms ***', kingdoms);
+      console.log('*** KINGDOM DEBUG: Kingdoms error ***', kingdomsError);
       debug.log('GameContext', 'Other kingdoms:', kingdoms);
       debug.log('GameContext', 'Kingdoms error:', kingdomsError);
 
       if (kingdomsError) {
+        console.error('*** KINGDOM DEBUG: Error fetching other kingdoms ***', kingdomsError);
         throw kingdomsError;
       }
       
       setOtherKingdoms(kingdoms || []);
 
       // Fetch war reports
+      console.log('*** KINGDOM DEBUG: Fetching war reports ***');
       debug.log('GameContext', 'Fetching war reports');
       const { data: reports, error: reportsError } = await supabase
         .from('war_reports')
@@ -128,28 +188,36 @@ export function GameProvider({ children }) {
         .order('created_at', { ascending: false })
         .limit(10);
 
+      console.log('*** KINGDOM DEBUG: War reports ***', reports);
+      console.log('*** KINGDOM DEBUG: Reports error ***', reportsError);
       debug.log('GameContext', 'War reports:', reports);
       debug.log('GameContext', 'Reports error:', reportsError);
 
       if (reportsError) {
+        console.error('*** KINGDOM DEBUG: Error fetching war reports ***', reportsError);
         throw reportsError;
       }
       
       setWarReports(reports || []);
+      console.log('*** KINGDOM DEBUG: Game data fetching complete ***');
       debug.log('GameContext', 'Game data fetching complete');
 
     } catch (error) {
+      console.error('*** KINGDOM DEBUG: Error in fetchGameState ***', error);
       console.error('Error fetching game data:', error);
-      setError('Failed to load game data');
+      setError(`Failed to fetch game data: ${error.message}`);
+      throw error;
     }
   }
 
   async function createNewGameState(userId) {
     try {
+      console.log('*** KINGDOM DEBUG: createNewGameState started for user:', userId, '***');
       debug.log('GameContext', 'Creating new game state for user:', userId);
       // Get user metadata for username
       const { data: { user } } = await supabase.auth.getUser();
       const username = user?.user_metadata?.username || 'Kingdom';
+      console.log('*** KINGDOM DEBUG: Username ***', username);
       debug.log('GameContext', 'Username:', username);
 
       const newGameState = {
@@ -177,6 +245,7 @@ export function GameProvider({ children }) {
         last_resource_collection: new Date().toISOString()
       };
 
+      console.log('*** KINGDOM DEBUG: New game state to insert ***', newGameState);
       debug.log('GameContext', 'New game state to insert:', newGameState);
       const { data, error } = await supabase
         .from('game_states')
@@ -184,42 +253,51 @@ export function GameProvider({ children }) {
         .select()
         .single();
 
+      console.log('*** KINGDOM DEBUG: Insert result data ***', data);
+      console.log('*** KINGDOM DEBUG: Insert error ***', error);
       debug.log('GameContext', 'Insert result data:', data);
       debug.log('GameContext', 'Insert error:', error);
 
       if (error) {
+        console.error('*** KINGDOM DEBUG: Error creating new game state ***', error);
         throw error;
       }
 
       setGameState(data);
+      console.log('*** KINGDOM DEBUG: Game state created and set successfully ***');
       debug.log('GameContext', 'Game state created and set successfully');
     } catch (error) {
+      console.error('*** KINGDOM DEBUG: Error in createNewGameState ***', error);
       console.error('Error creating new game state:', error);
-      setError('Failed to create new game state');
+      setError(`Failed to create new game state: ${error.message}`);
     }
   }
 
   async function updateGameState(newState) {
     try {
+      console.log('*** KINGDOM DEBUG: updateGameState started ***');
       const { error } = await supabase
         .from('game_states')
         .update(newState)
         .eq('id', user.id);
 
       if (error) {
+        console.error('*** KINGDOM DEBUG: Error updating game state ***', error);
         throw error;
       }
 
       setGameState(newState);
     } catch (error) {
+      console.error('*** KINGDOM DEBUG: Error in updateGameState ***', error);
       console.error('Error updating game state:', error);
-      setError('Failed to update game state');
+      setError(`Failed to update game state: ${error.message}`);
     }
   }
 
   // Attack another kingdom
   async function attackKingdom(targetKingdomId) {
     try {
+      console.log('*** KINGDOM DEBUG: attackKingdom started ***');
       debug.log('GameContext', 'Attacking kingdom with ID:', targetKingdomId);
       
       // Get target kingdom data
@@ -229,30 +307,34 @@ export function GameProvider({ children }) {
         .eq('id', targetKingdomId)
         .single();
 
+      console.log('*** KINGDOM DEBUG: Target kingdom data ***', targetKingdom);
+      console.log('*** KINGDOM DEBUG: Target error ***', targetError);
       debug.log('GameContext', 'Target kingdom data:', targetKingdom);
       debug.log('GameContext', 'Target error:', targetError);
 
       if (targetError) {
+        console.error('*** KINGDOM DEBUG: Error fetching target kingdom ***', targetError);
         throw targetError;
       }
 
       if (!targetKingdom) {
+        console.error('*** KINGDOM DEBUG: Target kingdom not found ***');
         throw new Error('Target kingdom not found');
       }
 
       // Ensure required objects exist
       if (!gameState.army) {
-        console.error('Attacker army is missing');
+        console.error('*** KINGDOM DEBUG: Attacker army is missing ***');
         throw new Error('Your army is not ready for battle');
       }
 
       if (!targetKingdom.army) {
-        console.error('Target army is missing');
+        console.error('*** KINGDOM DEBUG: Target army is missing ***');
         throw new Error('Target kingdom has no army');
       }
 
       if (!targetKingdom.buildings || !targetKingdom.buildings.castle) {
-        console.warn('Target castle is missing, assuming level 1');
+        console.warn('*** KINGDOM DEBUG: Target castle is missing, assuming level 1 ***');
         targetKingdom.buildings = targetKingdom.buildings || {};
         targetKingdom.buildings.castle = { level: 1, defense_bonus: 10 };
       }
@@ -261,6 +343,8 @@ export function GameProvider({ children }) {
       const attackPower = calculateArmyPower(gameState.army);
       const defensePower = calculateDefensePower(targetKingdom.army, targetKingdom.buildings.castle);
       
+      console.log('*** KINGDOM DEBUG: Attack power ***', attackPower);
+      console.log('*** KINGDOM DEBUG: Defense power ***', defensePower);
       debug.log('GameContext', 'Attack power:', attackPower);
       debug.log('GameContext', 'Defense power:', defensePower);
 
@@ -269,8 +353,8 @@ export function GameProvider({ children }) {
       const randomFactor = 0.8 + (Math.random() * 0.4); // Random factor between 0.8 and 1.2
       const adjustedRatio = ratio * randomFactor;
       
-      debug.log('GameContext', 'Attack/Defense ratio:', ratio);
-      debug.log('GameContext', 'Adjusted ratio with random factor:', adjustedRatio);
+      console.log('*** KINGDOM DEBUG: Attack/Defense ratio ***', ratio);
+      console.log('*** KINGDOM DEBUG: Adjusted ratio with random factor ***', adjustedRatio);
       
       const victory = adjustedRatio > 1;
       
@@ -303,6 +387,9 @@ export function GameProvider({ children }) {
         resourcesStolen = { gold: 0, food: 0, wood: 0, stone: 0 };
       }
       
+      console.log('*** KINGDOM DEBUG: Attacker losses ***', attackerLosses);
+      console.log('*** KINGDOM DEBUG: Defender losses ***', defenderLosses);
+      console.log('*** KINGDOM DEBUG: Resources stolen ***', resourcesStolen);
       debug.log('GameContext', 'Attacker losses:', attackerLosses);
       debug.log('GameContext', 'Defender losses:', defenderLosses);
       debug.log('GameContext', 'Resources stolen:', resourcesStolen);
@@ -354,6 +441,7 @@ export function GameProvider({ children }) {
         }
       };
       
+      console.log('*** KINGDOM DEBUG: War report to insert ***', warReport);
       debug.log('GameContext', 'War report to insert:', warReport);
 
       // Update database
@@ -361,9 +449,11 @@ export function GameProvider({ children }) {
         .from('war_reports')
         .insert(warReport);
         
+      console.log('*** KINGDOM DEBUG: Report insert error ***', reportError);
       debug.log('GameContext', 'Report insert error:', reportError);
 
       if (reportError) {
+        console.error('*** KINGDOM DEBUG: Error inserting war report ***', reportError);
         throw reportError;
       }
 
@@ -382,9 +472,11 @@ export function GameProvider({ children }) {
         })
         .eq('id', gameState.id);
         
+      console.log('*** KINGDOM DEBUG: Attacker update error ***', attackerUpdateError);
       debug.log('GameContext', 'Attacker update error:', attackerUpdateError);
 
       if (attackerUpdateError) {
+        console.error('*** KINGDOM DEBUG: Error updating attacker state ***', attackerUpdateError);
         throw attackerUpdateError;
       }
 
@@ -397,9 +489,11 @@ export function GameProvider({ children }) {
         })
         .eq('id', targetKingdom.id);
         
+      console.log('*** KINGDOM DEBUG: Defender update error ***', defenderUpdateError);
       debug.log('GameContext', 'Defender update error:', defenderUpdateError);
 
       if (defenderUpdateError) {
+        console.error('*** KINGDOM DEBUG: Error updating defender state ***', defenderUpdateError);
         throw defenderUpdateError;
       }
 
@@ -416,6 +510,7 @@ export function GameProvider({ children }) {
         resourcesStolen
       };
     } catch (error) {
+      console.error('*** KINGDOM DEBUG: Error attacking kingdom ***', error);
       console.error('Error attacking kingdom:', error);
       setError('Failed to attack kingdom');
       return null;
@@ -438,7 +533,7 @@ export function GameProvider({ children }) {
   function calculateArmyPower(army) {
     // Check if army is undefined or null
     if (!army) {
-      console.warn('Army is undefined or null in calculateArmyPower');
+      console.warn('*** KINGDOM DEBUG: Army is undefined or null in calculateArmyPower ***');
       return 0;
     }
     
@@ -458,12 +553,12 @@ export function GameProvider({ children }) {
   function calculateDefensePower(army, castle) {
     // Check if army or castle is undefined or null
     if (!army) {
-      console.warn('Army is undefined or null in calculateDefensePower');
+      console.warn('*** KINGDOM DEBUG: Army is undefined or null in calculateDefensePower ***');
       return 0;
     }
     
     if (!castle) {
-      console.warn('Castle is undefined or null in calculateDefensePower');
+      console.warn('*** KINGDOM DEBUG: Castle is undefined or null in calculateDefensePower ***');
       return calculateArmyPower(army); // Just use army power without bonus
     }
     
@@ -508,6 +603,7 @@ export function GameProvider({ children }) {
       };
       
     } catch (error) {
+      console.error('*** KINGDOM DEBUG: Error collecting resources ***', error);
       console.error('Error collecting resources:', error);
       setError('Failed to collect resources');
       return null;
@@ -524,6 +620,7 @@ export function GameProvider({ children }) {
       
       // Check if player has enough resources
       if (gameState.resources.gold < upgradeCost) {
+        console.error('*** KINGDOM DEBUG: Not enough gold for upgrade ***');
         throw new Error('Not enough gold for upgrade');
       }
       
@@ -549,6 +646,7 @@ export function GameProvider({ children }) {
       return updatedBuilding;
       
     } catch (error) {
+      console.error(`*** KINGDOM DEBUG: Error upgrading ${buildingType} ***`, error);
       console.error(`Error upgrading ${buildingType}:`, error);
       setError(`Failed to upgrade ${buildingType}`);
       return null;
@@ -615,6 +713,7 @@ export function GameProvider({ children }) {
       // Check if player has enough resources
       if (gameState.resources.gold < totalGoldCost || 
           gameState.resources.food < totalFoodCost) {
+        console.error('*** KINGDOM DEBUG: Not enough resources to train troops ***');
         throw new Error('Not enough resources to train troops');
       }
       
@@ -638,6 +737,7 @@ export function GameProvider({ children }) {
       return updatedState.army;
       
     } catch (error) {
+      console.error(`*** KINGDOM DEBUG: Error training ${troopType} ***`, error);
       console.error(`Error training ${troopType}:`, error);
       setError(`Failed to train ${troopType}`);
       return null;
@@ -651,6 +751,7 @@ export function GameProvider({ children }) {
       if (error) throw error;
       router.push('/login');
     } catch (error) {
+      console.error('*** KINGDOM DEBUG: Error signing out ***', error);
       console.error('Error signing out:', error);
       setError('Failed to sign out');
     }
