@@ -147,12 +147,42 @@ export function GameProvider({ children }) {
     try {
       debug.log('GameContext', 'Fetching game state for user:', userId);
       
+      // Check for cached game state first
+      const cachedState = localStorage.getItem(`kingdom_gamestate_${userId}`);
+      if (cachedState) {
+        try {
+          const parsedState = JSON.parse(cachedState);
+          const cacheTime = localStorage.getItem(`kingdom_gamestate_time_${userId}`);
+          const cacheAge = cacheTime ? (Date.now() - parseInt(cacheTime)) / 1000 : 9999;
+          
+          console.log(`*** KINGDOM DEBUG: Found cached game state (${cacheAge.toFixed(1)}s old) ***`);
+          
+          // Use cached state while we fetch the latest in the background
+          if (parsedState && Object.keys(parsedState).length > 0) {
+            console.log('*** KINGDOM DEBUG: Using cached game state while fetching latest ***');
+            setGameState(parsedState);
+            // Don't set loading to false yet - we'll do that after the real fetch
+          }
+        } catch (cacheError) {
+          console.error('*** KINGDOM DEBUG: Error parsing cached game state ***', cacheError);
+          // Continue with normal fetch if cache parsing fails
+        }
+      }
+      
       // Test Supabase connection first using our new explicit test function
       console.log('*** KINGDOM DEBUG: Testing Supabase connection ***');
       const connectionTest = await testSupabaseConnection();
       
       if (!connectionTest.success) {
         console.error('*** KINGDOM DEBUG: Supabase connection test failed ***', connectionTest.error);
+        
+        // If we have a cached state, use it and don't throw an error
+        if (cachedState) {
+          console.log('*** KINGDOM DEBUG: Using cached state due to connection failure ***');
+          setLoading(false);
+          return;
+        }
+        
         throw new Error(`Supabase connection error: ${connectionTest.error}`);
       }
       
@@ -231,6 +261,16 @@ export function GameProvider({ children }) {
             console.log('*** KINGDOM DEBUG: Setting game state ***', gameStateData);
             debug.log('GameContext', 'Setting game state:', gameStateData);
             setGameState(gameStateData);
+            
+            // Cache the game state for future use
+            try {
+              localStorage.setItem(`kingdom_gamestate_${userId}`, JSON.stringify(gameStateData));
+              localStorage.setItem(`kingdom_gamestate_time_${userId}`, Date.now().toString());
+              console.log('*** KINGDOM DEBUG: Game state cached successfully ***');
+            } catch (cacheError) {
+              console.error('*** KINGDOM DEBUG: Error caching game state ***', cacheError);
+              // Continue even if caching fails
+            }
           }
 
           // Fetch other kingdoms
