@@ -161,10 +161,10 @@ export function GameProvider({ children }) {
       // Set a global timeout for the entire fetchGameState operation
       const globalTimeoutPromise = new Promise((_, reject) => {
         setTimeout(() => {
-          const timeoutError = new Error('Global fetchGameState timeout after 15 seconds');
+          const timeoutError = new Error('Global fetchGameState timeout after 30 seconds');
           console.error('*** KINGDOM DEBUG: TIMEOUT ERROR ***', timeoutError);
           reject(timeoutError);
-        }, 15000);
+        }, 30000); // Increased from 15 seconds to 30 seconds
       });
       
       // Create a promise for the actual fetch operation
@@ -176,7 +176,7 @@ export function GameProvider({ children }) {
           // Set up a timeout for the fetch operation
           const fetchWithTimeout = async () => {
             const timeoutPromise = new Promise((_, reject) => {
-              setTimeout(() => reject(new Error('Fetch game state timeout after 5 seconds')), 5000);
+              setTimeout(() => reject(new Error('Fetch game state timeout after 10 seconds')), 10000); // Increased from 5 to 10 seconds
             });
             
             const fetchPromise = supabase
@@ -300,7 +300,41 @@ export function GameProvider({ children }) {
       })();
       
       // Race the fetch operation against the global timeout
-      await Promise.race([fetchOperationPromise, globalTimeoutPromise]);
+      try {
+        await Promise.race([fetchOperationPromise, globalTimeoutPromise]);
+      } catch (raceError) {
+        console.error('*** KINGDOM DEBUG: Race error in fetchGameState ***', raceError);
+        
+        // If we get a timeout, try to recover by setting loading to false
+        if (raceError.message.includes('timeout')) {
+          console.log('*** KINGDOM DEBUG: Timeout detected, attempting recovery ***');
+          setLoading(false);
+          
+          // Create a minimal game state to prevent getting stuck
+          if (!gameState) {
+            console.log('*** KINGDOM DEBUG: Creating emergency minimal game state due to timeout ***');
+            try {
+              const minimalGameState = {
+                id: userId,
+                kingdom_name: 'Emergency Kingdom',
+                resources: { gold: 1000, food: 500, wood: 300, stone: 200 },
+                buildings: { castle: { level: 1 } },
+                army: { swordsmen: 10 },
+                last_resource_collection: new Date().toISOString()
+              };
+              setGameState(minimalGameState);
+              
+              // Set emergency mode flag
+              localStorage.setItem('bypass_loading', 'true');
+              console.log('*** KINGDOM DEBUG: Emergency mode activated due to timeout ***');
+            } catch (emergencyError) {
+              console.error('*** KINGDOM DEBUG: Failed to create emergency game state ***', emergencyError);
+            }
+          }
+        }
+        
+        throw raceError;
+      }
 
     } catch (error) {
       console.error('*** KINGDOM DEBUG: Error in fetchGameState ***', error);
