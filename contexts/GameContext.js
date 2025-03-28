@@ -541,8 +541,8 @@ export function GameProvider({ children }) {
         // Mark that we have pending updates to retry later
         localStorage.setItem('kingdom_has_pending_updates', 'true');
         
-        // Still set the error for debugging purposes
-        setError(`Game state update queued offline: ${error.message}`);
+        // Still set the error for debugging purposes, but with a more friendly message
+        setError(`Playing in offline mode. Your changes will be saved when connection is restored.`);
         return;
       }
       
