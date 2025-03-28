@@ -231,44 +231,80 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
   };
 
   return (
-    <div className="loading-screen">
-      <div className="loading-content">
-        <h1>Loading Your Kingdom</h1>
-        <div className="loading-bar-container">
-          <div 
-            className="loading-bar" 
-            style={{ width: `${loadPercent}%` }}
-          ></div>
-        </div>
-        <p>{message}{dots}</p>
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column',
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      height: '100vh',
+      fontFamily: 'monospace'
+    }}>
+      <div style={{ 
+        padding: '30px', 
+        border: '1px solid black',
+        maxWidth: '600px',
+        width: '100%',
+        textAlign: 'center'
+      }}>
+        <h2 style={{ fontWeight: 'normal', marginBottom: '20px' }}>Kingdom Management Game</h2>
         
-        <div className="connection-status">
-          Loading time: {loadTime}s | Supabase: <span className={
-            connectionStatus === 'Connected' ? 'status-connected' : 
-            connectionStatus === 'Failed' ? 'status-failed' : 
-            connectionStatus === 'Testing...' ? 'status-testing' : ''
-          }>
+        <div style={{ marginBottom: '20px' }}>
+          {message}{dots}
+        </div>
+        
+        <div style={{ 
+          width: '100%', 
+          height: '10px', 
+          background: '#eee', 
+          marginBottom: '15px',
+          border: '1px solid #ccc'
+        }}>
+          <div style={{ 
+            width: `${loadPercent}%`, 
+            height: '100%', 
+            background: '#aaa',
+            transition: 'width 0.5s ease'
+          }}></div>
+        </div>
+        
+        <div style={{ fontSize: '12px', marginTop: '10px' }}>
+          Loading time: {loadTime}s | Supabase: <span style={{ 
+            color: connectionStatus === 'Connected' ? 'green' : 
+                  connectionStatus === 'Failed' ? 'red' : 
+                  connectionStatus === 'Testing...' ? 'orange' : 'gray'
+          }}>
             {connectionStatus}
           </span>
         </div>
         
         {loadTime > 5 && (
-          <div className="skip-loading-container">
-            <button 
-              className="skip-loading-button"
+          <div style={{ marginTop: '15px' }}>
+            <button
               onClick={() => {
                 console.log('*** KINGDOM DEBUG: Skip loading button clicked ***');
                 localStorage.setItem('bypass_loading', 'true');
                 window.location.reload();
               }}
+              style={{
+                padding: '8px 15px',
+                border: '2px solid #999',
+                background: '#f5f5f5',
+                color: '#333',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '14px',
+                borderRadius: '4px'
+              }}
             >
-              Skip Loading
+              ⚠️ Skip Loading (Emergency Mode)
             </button>
-            <p className="skip-loading-info">
-              Having trouble connecting? Click to skip the loading screen.
-            </p>
+            <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>
+              Use this if you're stuck on the loading screen for too long
+            </div>
           </div>
         )}
+        
         {(showDebugButton || forceDebug) && (
           <div style={{ marginTop: '20px' }}>
             <button 
@@ -465,76 +501,6 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
           </div>
         )}
       </div>
-      <style jsx>{`
-        .loading-screen {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: #2c3e50;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          z-index: 1000;
-          color: white;
-          font-family: 'Arial', sans-serif;
-        }
-        .loading-content {
-          text-align: center;
-          width: 80%;
-          max-width: 500px;
-        }
-        .loading-bar-container {
-          width: 100%;
-          height: 20px;
-          background: #34495e;
-          border-radius: 10px;
-          margin: 20px 0;
-          overflow: hidden;
-        }
-        .loading-bar {
-          height: 100%;
-          background: #f39c12;
-          transition: width 0.5s ease;
-        }
-        .connection-status {
-          font-size: 14px;
-          margin: 15px 0;
-        }
-        .status-connected {
-          color: #2ecc71;
-        }
-        .status-failed {
-          color: #e74c3c;
-        }
-        .status-testing {
-          color: #f39c12;
-        }
-        .skip-loading-container {
-          margin-top: 20px;
-          padding: 10px;
-          border: 1px dashed #f39c12;
-          border-radius: 5px;
-        }
-        .skip-loading-button {
-          background: #e74c3c;
-          color: white;
-          border: none;
-          padding: 10px 20px;
-          border-radius: 5px;
-          cursor: pointer;
-          font-weight: bold;
-          margin-bottom: 10px;
-        }
-        .skip-loading-button:hover {
-          background: #c0392b;
-        }
-        .skip-loading-info {
-          font-size: 0.8rem;
-          color: #bdc3c7;
-        }
-      `}</style>
     </div>
   );
 }
