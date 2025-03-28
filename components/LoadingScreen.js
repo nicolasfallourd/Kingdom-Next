@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { debug } from '../lib/debug';
+import { testSupabaseConnection } from '../lib/supabase';
 
 export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
   const [dots, setDots] = useState('');
@@ -7,6 +8,9 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [consoleOutput, setConsoleOutput] = useState([]);
   const [forceDebug, setForceDebug] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('Unknown');
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResults, setTestResults] = useState(null);
 
   useEffect(() => {
     // Force debug mode after 3 seconds
@@ -27,6 +31,11 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
     // Track loading time
     const loadTimeInterval = setInterval(() => {
       setLoadTime(prev => prev + 1);
+      
+      // Auto-test connection after 5 seconds
+      if (prev === 5) {
+        testConnection();
+      }
     }, 1000);
     
     // Capture console output
@@ -83,6 +92,27 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
     window.location.reload();
   };
   
+  // Test connection function
+  const testConnection = async () => {
+    try {
+      setIsTesting(true);
+      setConnectionStatus('Testing...');
+      console.log('*** KINGDOM DEBUG: Manually testing Supabase connection ***');
+      
+      const result = await testSupabaseConnection();
+      
+      setTestResults(result);
+      setConnectionStatus(result.success ? 'Connected' : 'Failed');
+      console.log('*** KINGDOM DEBUG: Manual connection test result ***', result);
+    } catch (error) {
+      console.error('*** KINGDOM DEBUG: Error in manual connection test ***', error);
+      setConnectionStatus('Error');
+      setTestResults({ success: false, error: error.message });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+  
   // Clear game state function
   const clearGameState = async () => {
     console.log('*** KINGDOM DEBUG: Attempting to clear game state ***');
@@ -134,7 +164,13 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
         </div>
         
         <div style={{ fontSize: '12px', marginTop: '10px' }}>
-          Loading time: {loadTime}s
+          Loading time: {loadTime}s | Supabase: <span style={{ 
+            color: connectionStatus === 'Connected' ? 'green' : 
+                  connectionStatus === 'Failed' ? 'red' : 
+                  connectionStatus === 'Testing...' ? 'orange' : 'gray'
+          }}>
+            {connectionStatus}
+          </span>
         </div>
         
         {(showDebugButton || forceDebug) && (
@@ -152,6 +188,23 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
               }}
             >
               {showDebugInfo ? 'Hide Debug Info' : 'Show Debug Info'}
+            </button>
+            
+            <button 
+              onClick={testConnection}
+              disabled={isTesting}
+              style={{ 
+                padding: '5px 10px',
+                border: '1px solid black',
+                background: 'white',
+                cursor: isTesting ? 'default' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '12px',
+                marginRight: '10px',
+                opacity: isTesting ? 0.7 : 1
+              }}
+            >
+              {isTesting ? 'Testing...' : 'Test Connection'}
             </button>
             
             <button 
@@ -196,6 +249,26 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
             overflowY: 'auto'
           }}>
             <p><strong>Debug Information:</strong></p>
+            
+            {testResults && (
+              <div style={{
+                marginBottom: '15px',
+                padding: '10px',
+                border: '1px solid #ccc',
+                background: testResults.success ? '#f0fff0' : '#fff0f0'
+              }}>
+                <p><strong>Connection Test Results:</strong></p>
+                <pre style={{ 
+                  fontSize: '10px', 
+                  margin: '5px 0',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-all'
+                }}>
+                  {JSON.stringify(testResults, null, 2)}
+                </pre>
+              </div>
+            )}
+            
             <p>If you're seeing this screen for too long, there might be an issue with:</p>
             <ul style={{ paddingLeft: '20px' }}>
               <li>Database connection</li>
@@ -233,6 +306,7 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
             
             <p>Try these steps:</p>
             <ol style={{ paddingLeft: '20px' }}>
+              <li>Click "Test Connection" to check if Supabase is reachable</li>
               <li>Click "Force Reload" to refresh with debug mode enabled</li>
               <li>If that doesn't work, click "Reset Game State" to clear your game data</li>
               <li>Check browser console (F12) for more detailed errors</li>

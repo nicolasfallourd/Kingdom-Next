@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, testSupabaseConnection } from '../lib/supabase';
 import { useRouter } from 'next/router';
 import { debug, supabaseSchema } from '../lib/debug';
 
@@ -114,27 +114,36 @@ export function GameProvider({ children }) {
     try {
       debug.log('GameContext', 'Fetching game state for user:', userId);
       
-      // Test Supabase connection first
+      // Test Supabase connection first using our new explicit test function
       console.log('*** KINGDOM DEBUG: Testing Supabase connection ***');
-      const { data: testData, error: testError } = await supabase
-        .from('game_states')
-        .select('count')
-        .limit(1);
-        
-      if (testError) {
-        console.error('*** KINGDOM DEBUG: Supabase connection test failed ***', testError);
-        throw new Error(`Supabase connection error: ${testError.message}`);
+      const connectionTest = await testSupabaseConnection();
+      
+      if (!connectionTest.success) {
+        console.error('*** KINGDOM DEBUG: Supabase connection test failed ***', connectionTest.error);
+        throw new Error(`Supabase connection error: ${connectionTest.error}`);
       }
       
-      console.log('*** KINGDOM DEBUG: Supabase connection test successful ***', testData);
+      console.log('*** KINGDOM DEBUG: Supabase connection test successful ***', connectionTest);
       
-      // Fetch game state
+      // Fetch game state with timeout
       console.log('*** KINGDOM DEBUG: Fetching game state data ***');
-      const { data: gameStateData, error: gameStateError } = await supabase
-        .from('game_states')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      
+      // Set up a timeout for the fetch operation
+      const fetchWithTimeout = async () => {
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Fetch game state timeout after 5 seconds')), 5000);
+        });
+        
+        const fetchPromise = supabase
+          .from('game_states')
+          .select('*')
+          .eq('id', userId)
+          .single();
+          
+        return Promise.race([fetchPromise, timeoutPromise]);
+      };
+      
+      const { data: gameStateData, error: gameStateError } = await fetchWithTimeout();
 
       console.log('*** KINGDOM DEBUG: Game state data ***', gameStateData);
       console.log('*** KINGDOM DEBUG: Game state error ***', gameStateError);
