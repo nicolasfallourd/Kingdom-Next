@@ -575,23 +575,64 @@ export function GameProvider({ children }) {
         }
       };
       
-      console.log('*** KINGDOM DEBUG: War report to insert ***', warReport);
+      console.log('*** KINGDOM DEBUG: War report to insert ***', JSON.stringify(warReport, null, 2));
       debug.log('GameContext', 'War report to insert:', warReport);
 
       // Check if war_reports table exists
       try {
-        // First try to insert the war report
-        const { error: reportError } = await supabase
+        // First check if the war_reports table exists
+        const { data: tableInfo, error: tableError } = await supabase
           .from('war_reports')
-          .insert(warReport);
+          .select('*')
+          .limit(1);
           
-        console.log('*** KINGDOM DEBUG: Report insert error ***', reportError);
-        debug.log('GameContext', 'Report insert error:', reportError);
-
-        if (reportError) {
-          console.error('*** KINGDOM DEBUG: Error inserting war report ***', reportError);
+        console.log('*** KINGDOM DEBUG: War reports table check ***', { data: tableInfo, error: tableError });
+        
+        if (tableError) {
+          console.error('*** KINGDOM DEBUG: War reports table might not exist ***', tableError);
           console.warn('*** KINGDOM DEBUG: Continuing without war report ***');
           // Continue without war report - don't throw error
+        } else {
+          // Table exists, try to insert the war report
+          console.log('*** KINGDOM DEBUG: Attempting to insert war report ***');
+          
+          const { data: reportData, error: reportError } = await supabase
+            .from('war_reports')
+            .insert(warReport)
+            .select();
+            
+          console.log('*** KINGDOM DEBUG: Report insert result ***', { data: reportData, error: reportError });
+          debug.log('GameContext', 'Report insert result:', { data: reportData, error: reportError });
+
+          if (reportError) {
+            console.error('*** KINGDOM DEBUG: Error inserting war report ***', reportError);
+            
+            // Check if it's a permissions issue
+            if (reportError.code === '42501' || reportError.message.includes('permission denied')) {
+              console.error('*** KINGDOM DEBUG: Permission denied - check RLS policies ***');
+            }
+            
+            // Check if it's a foreign key constraint issue
+            if (reportError.code === '23503' || reportError.message.includes('foreign key constraint')) {
+              console.error('*** KINGDOM DEBUG: Foreign key constraint violation ***');
+            }
+            
+            // Check if it's a not-null constraint issue
+            if (reportError.code === '23502' || reportError.message.includes('not-null constraint')) {
+              console.error('*** KINGDOM DEBUG: Not-null constraint violation ***');
+              console.error('*** KINGDOM DEBUG: Required fields check ***', {
+                attacker_id: !!warReport.attacker_id,
+                defender_id: !!warReport.defender_id,
+                victory: typeof warReport.victory === 'boolean',
+                report: !!warReport.report
+              });
+            }
+            
+            console.warn('*** KINGDOM DEBUG: Continuing without war report ***');
+            // Continue without war report - don't throw error
+          } else {
+            console.log('*** KINGDOM DEBUG: War report created successfully ***', reportData);
+          }
         }
       } catch (warReportError) {
         console.error('*** KINGDOM DEBUG: Exception inserting war report ***', warReportError);
