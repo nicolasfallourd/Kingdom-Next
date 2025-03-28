@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase, testSupabaseConnection } from '../lib/supabase';
+import { supabase, testSupabase } from '../lib/supabase';
 import { useRouter } from 'next/router';
 import { debug, supabaseSchema } from '../lib/debug';
 
@@ -147,283 +147,113 @@ export function GameProvider({ children }) {
     try {
       debug.log('GameContext', 'Fetching game state for user:', userId);
       
-      // Check for cached game state first
-      const cachedState = localStorage.getItem(`kingdom_gamestate_${userId}`);
-      if (cachedState) {
-        try {
-          const parsedState = JSON.parse(cachedState);
-          const cacheTime = localStorage.getItem(`kingdom_gamestate_time_${userId}`);
-          const cacheAge = cacheTime ? (Date.now() - parseInt(cacheTime)) / 1000 : 9999;
-          
-          console.log(`*** KINGDOM DEBUG: Found cached game state (${cacheAge.toFixed(1)}s old) ***`);
-          
-          // Use cached state while we fetch the latest in the background
-          if (parsedState && Object.keys(parsedState).length > 0) {
-            console.log('*** KINGDOM DEBUG: Using cached game state while fetching latest ***');
-            setGameState(parsedState);
-            // Don't set loading to false yet - we'll do that after the real fetch
-          }
-        } catch (cacheError) {
-          console.error('*** KINGDOM DEBUG: Error parsing cached game state ***', cacheError);
-          // Continue with normal fetch if cache parsing fails
-        }
-      }
-      
-      // Test Supabase connection first using our new explicit test function
+      // Test Supabase connection first
       console.log('*** KINGDOM DEBUG: Testing Supabase connection ***');
-      const connectionTest = await testSupabaseConnection();
+      const connectionTest = await testSupabase();
       
       if (!connectionTest.success) {
         console.error('*** KINGDOM DEBUG: Supabase connection test failed ***', connectionTest.error);
-        
-        // If we have a cached state, use it and don't throw an error
-        if (cachedState) {
-          console.log('*** KINGDOM DEBUG: Using cached state due to connection failure ***');
-          setLoading(false);
-          return;
-        }
-        
         throw new Error(`Supabase connection error: ${connectionTest.error}`);
       }
       
-      console.log('*** KINGDOM DEBUG: Supabase connection test successful ***', connectionTest);
+      console.log('*** KINGDOM DEBUG: Supabase connection test successful ***');
       
-      // Add a helper function for safe Supabase operations with timeout handling
-      async function safeSupabaseOperation(operation, fallbackValue = null, timeoutMs = 10000) {
-        try {
-          // Create a timeout promise
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => {
-              reject(new Error(`Operation timeout after ${timeoutMs}ms`));
-            }, timeoutMs);
-          });
-          
-          // Execute the operation with timeout
-          const result = await Promise.race([operation(), timeoutPromise]);
-          return result;
-        } catch (error) {
-          console.error('*** KINGDOM DEBUG: Safe operation error ***', error);
-          debug.log('GameContext', 'Safe operation error:', error);
-          
-          // Return fallback value instead of throwing
-          return fallbackValue;
-        }
-      }
+      // Simple fetch with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       
-      // Set a global timeout for the entire fetchGameState operation
-      const globalTimeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-          const timeoutError = new Error('Global fetchGameState timeout after 30 seconds');
-          console.error('*** KINGDOM DEBUG: TIMEOUT ERROR ***', timeoutError);
-          reject(timeoutError);
-        }, 30000); // Increased from 15 seconds to 30 seconds
-      });
-      
-      // Create a promise for the actual fetch operation
-      const fetchOperationPromise = (async () => {
-        try {
-          // Fetch game state with timeout
-          console.log('*** KINGDOM DEBUG: Fetching game state data ***');
-          
-          // Set up a timeout for the fetch operation
-          const fetchWithTimeout = async () => {
-            const timeoutPromise = new Promise((_, reject) => {
-              setTimeout(() => reject(new Error('Fetch game state timeout after 10 seconds')), 10000); // Increased from 5 to 10 seconds
-            });
-            
-            const fetchPromise = supabase
-              .from('game_states')
-              .select('*')
-              .eq('id', userId)
-              .single();
-              
-            return Promise.race([fetchPromise, timeoutPromise]);
-          };
-          
-          const { data: gameStateData, error: gameStateError } = await fetchWithTimeout();
-
-          console.log('*** KINGDOM DEBUG: Game state data ***', gameStateData);
-          console.log('*** KINGDOM DEBUG: Game state error ***', gameStateError);
-          debug.log('GameContext', 'Game state data:', gameStateData);
-          debug.log('GameContext', 'Game state error:', gameStateError);
-
-          if (gameStateError && gameStateError.code !== 'PGRST116') {
-            console.error('*** KINGDOM DEBUG: Error fetching game state ***', gameStateError);
-            throw gameStateError;
-          }
-
-          // If no game state exists, create a new one
-          if (!gameStateData) {
-            console.log('*** KINGDOM DEBUG: No game state found, creating new one ***');
-            debug.log('GameContext', 'No game state found, creating new one');
-            await createNewGameState(userId);
-          } else {
-            console.log('*** KINGDOM DEBUG: Setting game state ***', gameStateData);
-            debug.log('GameContext', 'Setting game state:', gameStateData);
-            setGameState(gameStateData);
-            
-            // Cache the game state for future use
-            try {
-              localStorage.setItem(`kingdom_gamestate_${userId}`, JSON.stringify(gameStateData));
-              localStorage.setItem(`kingdom_gamestate_time_${userId}`, Date.now().toString());
-              console.log('*** KINGDOM DEBUG: Game state cached successfully ***');
-            } catch (cacheError) {
-              console.error('*** KINGDOM DEBUG: Error caching game state ***', cacheError);
-              // Continue even if caching fails
-            }
-          }
-
-          // Fetch other kingdoms
-          console.log('*** KINGDOM DEBUG: Fetching other kingdoms ***');
-          debug.log('GameContext', 'Fetching other kingdoms');
-          
-          // Log the current user ID for debugging
-          console.log('*** KINGDOM DEBUG: Current user ID for other kingdoms query ***', userId);
-          
-          try {
-            // First check how many total game states exist
-            const { data: totalCount, error: countError } = await supabase
-              .from('game_states')
-              .select('id', { count: 'exact', head: true });
-              
-            console.log('*** KINGDOM DEBUG: Total game states count ***', totalCount);
-            
-            if (countError) {
-              console.error('*** KINGDOM DEBUG: Error counting game states ***', countError);
-            }
-            
-            // Now fetch other kingdoms
-            const { data: kingdoms, error: kingdomsError } = await supabase
-              .from('game_states')
-              .select('id, kingdom_name, buildings, army')
-              .neq('id', userId)
-              .limit(10);
-
-            console.log('*** KINGDOM DEBUG: Other kingdoms query ***', {
-              query: `FROM game_states SELECT id, kingdom_name, buildings, army WHERE id != ${userId} LIMIT 10`,
-              results: kingdoms ? kingdoms.length : 0
-            });
-            console.log('*** KINGDOM DEBUG: Other kingdoms ***', kingdoms);
-            console.log('*** KINGDOM DEBUG: Kingdoms error ***', kingdomsError);
-            debug.log('GameContext', 'Other kingdoms:', kingdoms);
-            debug.log('GameContext', 'Kingdoms error:', kingdomsError);
-
-            if (kingdomsError) {
-              console.error('*** KINGDOM DEBUG: Error fetching other kingdoms ***', kingdomsError);
-              throw kingdomsError;
-            }
-            
-            setOtherKingdoms(kingdoms || []);
-          } catch (error) {
-            console.error('*** KINGDOM DEBUG: Exception in other kingdoms fetch ***', error);
-            // Don't throw here, just log the error and continue
-            setOtherKingdoms([]);
-          }
-
-          // Fetch war reports
-          console.log('*** KINGDOM DEBUG: Fetching war reports ***');
-          debug.log('GameContext', 'Fetching war reports');
-          try {
-            const { data: reports, error: reportsError } = await supabase
-              .from('war_reports')
-              .select('*')
-              .or(`attacker_id.eq.${userId},defender_id.eq.${userId}`)
-              .order('created_at', { ascending: false })
-              .limit(10);
-
-            console.log('*** KINGDOM DEBUG: War reports ***', reports);
-            console.log('*** KINGDOM DEBUG: Reports error ***', reportsError);
-            debug.log('GameContext', 'War reports:', reports);
-            debug.log('GameContext', 'Reports error:', reportsError);
-
-            if (reportsError) {
-              console.error('*** KINGDOM DEBUG: Error fetching war reports ***', reportsError);
-              throw reportsError;
-            }
-            
-            setWarReports(reports || []);
-          } catch (error) {
-            console.error('*** KINGDOM DEBUG: Exception in war reports fetch ***', error);
-            // Don't throw here, just log the error and continue
-            setWarReports([]);
-          }
-          
-          console.log('*** KINGDOM DEBUG: Game data fetching complete ***');
-          debug.log('GameContext', 'Game data fetching complete');
-          
-          // Explicitly set loading to false here to ensure we exit the loading state
-          setLoading(false);
-          
-          return true; // Signal successful completion
-        } catch (error) {
-          console.error('*** KINGDOM DEBUG: Error in fetchGameState inner try/catch ***', error);
-          throw error;
-        }
-      })();
-      
-      // Race the fetch operation against the global timeout
       try {
-        await Promise.race([fetchOperationPromise, globalTimeoutPromise]);
-      } catch (raceError) {
-        console.error('*** KINGDOM DEBUG: Race error in fetchGameState ***', raceError);
+        const { data: gameStateData, error: gameStateError } = await supabase
+          .from('game_states')
+          .select('*')
+          .eq('id', userId)
+          .single()
+          .abortSignal(controller.signal);
         
-        // If we get a timeout, try to recover by setting loading to false
-        if (raceError.message.includes('timeout')) {
-          console.log('*** KINGDOM DEBUG: Timeout detected, attempting recovery ***');
-          setLoading(false);
-          
-          // Create a minimal game state to prevent getting stuck
-          if (!gameState) {
-            console.log('*** KINGDOM DEBUG: Creating emergency minimal game state due to timeout ***');
-            try {
-              const minimalGameState = {
-                id: userId,
-                kingdom_name: 'Emergency Kingdom',
-                resources: { gold: 1000, food: 500, wood: 300, stone: 200 },
-                buildings: { castle: { level: 1 } },
-                army: { swordsmen: 10 },
-                last_resource_collection: new Date().toISOString()
-              };
-              setGameState(minimalGameState);
-              
-              // Set emergency mode flag
-              localStorage.setItem('bypass_loading', 'true');
-              console.log('*** KINGDOM DEBUG: Emergency mode activated due to timeout ***');
-            } catch (emergencyError) {
-              console.error('*** KINGDOM DEBUG: Failed to create emergency game state ***', emergencyError);
-            }
-          }
+        clearTimeout(timeoutId);
+        
+        console.log('*** KINGDOM DEBUG: Game state data ***', gameStateData);
+        console.log('*** KINGDOM DEBUG: Game state error ***', gameStateError);
+        
+        if (gameStateError && gameStateError.code !== 'PGRST116') {
+          console.error('*** KINGDOM DEBUG: Error fetching game state ***', gameStateError);
+          throw gameStateError;
         }
         
-        throw raceError;
+        // If no game state exists, create a new one
+        if (!gameStateData) {
+          console.log('*** KINGDOM DEBUG: No game state found, creating new one ***');
+          await createNewGameState(userId);
+        } else {
+          console.log('*** KINGDOM DEBUG: Setting game state ***', gameStateData);
+          setGameState(gameStateData);
+        }
+        
+        // Fetch other kingdoms with simple timeout
+        try {
+          const otherKingdomsController = new AbortController();
+          const otherKingdomsTimeoutId = setTimeout(() => otherKingdomsController.abort(), 10000);
+          
+          const { data: kingdoms, error: kingdomsError } = await supabase
+            .from('game_states')
+            .select('id, kingdom_name, buildings, army')
+            .neq('id', userId)
+            .limit(10)
+            .abortSignal(otherKingdomsController.signal);
+          
+          clearTimeout(otherKingdomsTimeoutId);
+          
+          console.log('*** KINGDOM DEBUG: Other kingdoms ***', kingdoms);
+          
+          if (kingdomsError) {
+            console.error('*** KINGDOM DEBUG: Error fetching other kingdoms ***', kingdomsError);
+          } else {
+            setOtherKingdoms(kingdoms || []);
+          }
+        } catch (error) {
+          console.error('*** KINGDOM DEBUG: Exception in other kingdoms fetch ***', error);
+          setOtherKingdoms([]);
+        }
+        
+        // Fetch war reports with simple timeout
+        try {
+          const warReportsController = new AbortController();
+          const warReportsTimeoutId = setTimeout(() => warReportsController.abort(), 10000);
+          
+          const { data: reports, error: reportsError } = await supabase
+            .from('war_reports')
+            .select('*')
+            .or(`attacker_id.eq.${userId},defender_id.eq.${userId}`)
+            .order('created_at', { ascending: false })
+            .limit(10)
+            .abortSignal(warReportsController.signal);
+          
+          clearTimeout(warReportsTimeoutId);
+          
+          console.log('*** KINGDOM DEBUG: War reports ***', reports);
+          
+          if (reportsError) {
+            console.error('*** KINGDOM DEBUG: Error fetching war reports ***', reportsError);
+          } else {
+            setWarReports(reports || []);
+          }
+        } catch (error) {
+          console.error('*** KINGDOM DEBUG: Exception in war reports fetch ***', error);
+          setWarReports([]);
+        }
+        
+      } catch (error) {
+        clearTimeout(timeoutId);
+        console.error('*** KINGDOM DEBUG: Fetch game state error ***', error);
+        throw error;
       }
-
-    } catch (error) {
-      console.error('*** KINGDOM DEBUG: Error in fetchGameState ***', error);
-      console.error('Error fetching game data:', error);
-      setError(`Failed to fetch game data: ${error.message}`);
       
-      // Force loading to false even if there's an error
       setLoading(false);
       
-      // Create a minimal game state to prevent getting stuck
-      if (!gameState) {
-        console.log('*** KINGDOM DEBUG: Creating emergency minimal game state due to error ***');
-        try {
-          const minimalGameState = {
-            id: userId,
-            kingdom_name: 'Emergency Kingdom',
-            resources: { gold: 1000, food: 500, wood: 300, stone: 200 },
-            buildings: { castle: { level: 1 } },
-            army: { swordsmen: 10 },
-            last_resource_collection: new Date().toISOString()
-          };
-          setGameState(minimalGameState);
-        } catch (emergencyError) {
-          console.error('*** KINGDOM DEBUG: Failed to create emergency game state ***', emergencyError);
-        }
-      }
-      
+    } catch (error) {
+      console.error('*** KINGDOM DEBUG: Error in fetchGameState ***', error);
+      setError(`Failed to fetch game data: ${error.message}`);
+      setLoading(false);
       throw error;
     }
   }
@@ -495,82 +325,37 @@ export function GameProvider({ children }) {
     try {
       console.log('*** KINGDOM DEBUG: updateGameState started ***');
       
-      // Cache the new state immediately to ensure UI responsiveness
+      // Set state immediately for UI responsiveness
       setGameState(newState);
       
-      // Store in localStorage as a backup
-      try {
-        localStorage.setItem(`kingdom_gamestate_${user.id}`, JSON.stringify(newState));
-        localStorage.setItem(`kingdom_gamestate_time_${user.id}`, Date.now().toString());
-        console.log('*** KINGDOM DEBUG: Game state cached in localStorage during update ***');
-      } catch (cacheError) {
-        console.error('*** KINGDOM DEBUG: Error caching game state during update ***', cacheError);
-        // Continue even if caching fails
-      }
+      // Simple update with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       
-      // Queue the update in localStorage in case the operation fails
       try {
-        const pendingUpdates = JSON.parse(localStorage.getItem('kingdom_pending_updates') || '[]');
-        pendingUpdates.push({
-          id: user.id,
-          state: newState,
-          timestamp: Date.now()
-        });
-        localStorage.setItem('kingdom_pending_updates', JSON.stringify(pendingUpdates));
-        console.log('*** KINGDOM DEBUG: Update queued in pending updates ***');
-      } catch (queueError) {
-        console.error('*** KINGDOM DEBUG: Error queueing update ***', queueError);
-      }
-      
-      // Use safeSupabaseOperation with timeout handling
-      const { error } = await safeSupabaseOperation(
-        () => supabase
+        const { error } = await supabase
           .from('game_states')
           .update(newState)
-          .eq('id', user.id),
-        { error: new Error('Update operation timed out') },
-        15000 // 15 second timeout for update operations
-      );
-
-      if (error) {
-        console.error('*** KINGDOM DEBUG: Error updating game state ***', error);
+          .eq('id', user.id)
+          .abortSignal(controller.signal);
         
-        // Don't throw here - we've already updated the local state and queued the update
-        console.log('*** KINGDOM DEBUG: Using local state due to update failure ***');
+        clearTimeout(timeoutId);
         
-        // Mark that we have pending updates to retry later
-        localStorage.setItem('kingdom_has_pending_updates', 'true');
-        
-        // Still set the error for debugging purposes, but with a more friendly message
-        setError(`Playing in offline mode. Your changes will be saved when connection is restored.`);
-        return;
-      }
-      
-      // Update successful, remove this update from the pending queue
-      try {
-        const pendingUpdates = JSON.parse(localStorage.getItem('kingdom_pending_updates') || '[]');
-        const filteredUpdates = pendingUpdates.filter(update => 
-          update.id !== user.id || 
-          JSON.stringify(update.state) !== JSON.stringify(newState)
-        );
-        localStorage.setItem('kingdom_pending_updates', JSON.stringify(filteredUpdates));
-        
-        if (filteredUpdates.length === 0) {
-          localStorage.removeItem('kingdom_has_pending_updates');
+        if (error) {
+          console.error('*** KINGDOM DEBUG: Error updating game state ***', error);
+          setError(`Failed to update game state: ${error.message}`);
+          return;
         }
         
-        console.log('*** KINGDOM DEBUG: Update removed from pending queue ***');
-      } catch (queueError) {
-        console.error('*** KINGDOM DEBUG: Error managing pending updates queue ***', queueError);
+        console.log('*** KINGDOM DEBUG: Game state updated successfully ***');
+      } catch (error) {
+        clearTimeout(timeoutId);
+        console.error('*** KINGDOM DEBUG: Update error ***', error);
+        setError(`Failed to update game state: ${error.message}`);
       }
-      
-      console.log('*** KINGDOM DEBUG: Game state updated successfully ***');
     } catch (error) {
       console.error('*** KINGDOM DEBUG: Error in updateGameState ***', error);
-      console.error('Error updating game state:', error);
       setError(`Failed to update game state: ${error.message}`);
-      
-      // We've already updated the local state, so no need to throw
     }
   }
 
@@ -590,25 +375,13 @@ export function GameProvider({ children }) {
         throw new Error('No target kingdom ID provided');
       }
       
-      // Get target kingdom data using safeSupabaseOperation
-      const { data: targetKingdom, error: targetError } = await safeSupabaseOperation(
-        () => supabase
-          .from('game_states')
-          .select('*')
-          .eq('id', targetKingdomId)
-          .single(),
-        { 
-          data: {
-            id: targetKingdomId,
-            kingdom_name: 'Unknown Kingdom',
-            resources: { gold: 500, food: 300, wood: 200, stone: 100 },
-            buildings: { castle: { level: 1, defense_bonus: 10 } },
-            army: { swordsmen: 10, archers: 5, cavalry: 2, catapults: 0 }
-          }, 
-          error: null 
-        }
-      );
-
+      // Get target kingdom data
+      const { data: targetKingdom, error: targetError } = await supabase
+        .from('game_states')
+        .select('*')
+        .eq('id', targetKingdomId)
+        .single();
+      
       console.log('*** KINGDOM DEBUG: Target kingdom data ***', targetKingdom);
       console.log('*** KINGDOM DEBUG: Target error ***', targetError);
       debug.log('GameContext', 'Target kingdom data:', targetKingdom);
@@ -741,14 +514,11 @@ export function GameProvider({ children }) {
       console.log('*** KINGDOM DEBUG: War report to insert ***', JSON.stringify(warReport, null, 2));
       debug.log('GameContext', 'War report to insert:', warReport);
 
-      // Check if war_reports table exists using safeSupabaseOperation
-      const { data: tableInfo, error: tableError } = await safeSupabaseOperation(
-        () => supabase
-          .from('war_reports')
-          .select('*')
-          .limit(1),
-        { data: null, error: new Error('War reports table check failed') }
-      );
+      // Check if war_reports table exists
+      const { data: tableInfo, error: tableError } = await supabase
+        .from('war_reports')
+        .select('*')
+        .limit(1);
       
       console.log('*** KINGDOM DEBUG: War reports table check ***', { data: tableInfo, error: tableError });
       
@@ -757,16 +527,13 @@ export function GameProvider({ children }) {
         console.warn('*** KINGDOM DEBUG: Continuing without war report ***');
         // Continue without war report - don't throw error
       } else {
-        // Table exists, try to insert the war report using safeSupabaseOperation
+        // Table exists, try to insert the war report
         console.log('*** KINGDOM DEBUG: Attempting to insert war report ***');
         
-        const { data: reportData, error: reportError } = await safeSupabaseOperation(
-          () => supabase
-            .from('war_reports')
-            .insert(warReport)
-            .select(),
-          { data: null, error: new Error('War report insert failed') }
-        );
+        const { data: reportData, error: reportError } = await supabase
+          .from('war_reports')
+          .insert(warReport)
+          .select();
         
         console.log('*** KINGDOM DEBUG: Report insert result ***', { data: reportData, error: reportError });
         debug.log('GameContext', 'Report insert result:', { data: reportData, error: reportError });
@@ -802,17 +569,14 @@ export function GameProvider({ children }) {
         }
       }
 
-      // Update attacker state using safeSupabaseOperation
-      const { error: attackerUpdateError } = await safeSupabaseOperation(
-        () => supabase
-          .from('game_states')
-          .update({
-            army: updatedAttackerArmy,
-            resources: updatedAttackerResources
-          })
-          .eq('id', gameState.id),
-        { error: new Error('Failed to update attacker state') }
-      );
+      // Update attacker state
+      const { error: attackerUpdateError } = await supabase
+        .from('game_states')
+        .update({
+          army: updatedAttackerArmy,
+          resources: updatedAttackerResources
+        })
+        .eq('id', gameState.id);
         
       console.log('*** KINGDOM DEBUG: Attacker update error ***', attackerUpdateError);
       debug.log('GameContext', 'Attacker update error:', attackerUpdateError);
@@ -822,18 +586,15 @@ export function GameProvider({ children }) {
         throw attackerUpdateError;
       }
 
-      // Update defender state using safeSupabaseOperation - only if we have a real target kingdom
+      // Update defender state - only if we have a real target kingdom
       if (!targetError) {
-        const { error: defenderUpdateError } = await safeSupabaseOperation(
-          () => supabase
-            .from('game_states')
-            .update({
-              army: updatedDefenderArmy,
-              resources: updatedDefenderResources
-            })
-            .eq('id', targetKingdom.id),
-          { error: null }
-        );
+        const { error: defenderUpdateError } = await supabase
+          .from('game_states')
+          .update({
+            army: updatedDefenderArmy,
+            resources: updatedDefenderResources
+          })
+          .eq('id', targetKingdom.id);
           
         console.log('*** KINGDOM DEBUG: Defender update error ***', defenderUpdateError);
         debug.log('GameContext', 'Defender update error:', defenderUpdateError);
@@ -1107,27 +868,6 @@ export function GameProvider({ children }) {
       console.error('*** KINGDOM DEBUG: Error signing out ***', error);
       console.error('Error signing out:', error);
       setError('Failed to sign out');
-    }
-  }
-
-  async function safeSupabaseOperation(operation, fallbackValue = null, timeoutMs = 10000) {
-    try {
-      // Create a timeout promise
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-          reject(new Error(`Operation timeout after ${timeoutMs}ms`));
-        }, timeoutMs);
-      });
-      
-      // Execute the operation with timeout
-      const result = await Promise.race([operation(), timeoutPromise]);
-      return result;
-    } catch (error) {
-      console.error('*** KINGDOM DEBUG: Safe operation error ***', error);
-      debug.log('GameContext', 'Safe operation error:', error);
-      
-      // Return fallback value instead of throwing
-      return fallbackValue;
     }
   }
 
