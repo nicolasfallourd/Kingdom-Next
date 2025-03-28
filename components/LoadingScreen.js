@@ -38,10 +38,10 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
     
     // Track loading time
     const loadTimeInterval = setInterval(() => {
-      setLoadTime(prev => prev + 1);
+      setLoadTime(prevLoadTime => prevLoadTime + 1);
       
       // Auto-test connection after 5 seconds
-      if (prev === 5) {
+      if (loadTime === 5) {
         testConnection();
       }
     }, 1000);
