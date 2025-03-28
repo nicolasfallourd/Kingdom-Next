@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Head from 'next/head';
 
 export default function Login() {
-  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: '', isError: true });
@@ -17,60 +17,12 @@ export default function Login() {
     setMessage({ text: '', isError: true });
 
     try {
-      // Create a deterministic email from the name for Supabase auth
-      const email = `${name.toLowerCase().replace(/\s+/g, '_')}@kingdom-game.com`;
-      
-      // Try to sign in
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
-      // If there's an error about unconfirmed email
-      if (error && error.message.includes('Email not confirmed')) {
-        // Try to update the user to bypass email confirmation
-        const { data: updateData, error: updateError } = await supabase.auth.updateUser({
-          email_confirm: true
-        });
-        
-        if (updateError) {
-          // If update fails, try to sign up again with auto-confirmation
-          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-              data: {
-                username: name
-              },
-              emailRedirectTo: window.location.origin,
-              emailConfirm: false
-            }
-          });
-          
-          if (signUpError) throw signUpError;
-          
-          // Try to sign in again after signup
-          const { error: retryError } = await supabase.auth.signInWithPassword({
-            email,
-            password
-          });
-          
-          if (retryError) throw retryError;
-        } else {
-          // If update succeeds, try to sign in again
-          const { error: retryError } = await supabase.auth.signInWithPassword({
-            email,
-            password
-          });
-          
-          if (retryError) throw retryError;
-        }
-      } else if (error) {
-        // For other errors, throw them
-        throw error;
-      }
-      
-      // If we get here, either the initial sign-in worked or we fixed the issue
+      if (error) throw error;
       router.push('/');
     } catch (error) {
       setMessage({ text: error.message, isError: true });
@@ -84,9 +36,8 @@ export default function Login() {
     setMessage({ text: '', isError: true });
 
     try {
-      // Generate a more reliable random name
+      // Generate a more reliable random email
       const randomId = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
-      const guestName = `Guest_${randomId.substring(0, 6)}`;
       const anonymousEmail = `user_${randomId}@kingdom-game.com`;
       
       // Generate a secure random password
@@ -99,10 +50,8 @@ export default function Login() {
         password: randomPassword,
         options: {
           data: {
-            username: guestName
-          },
-          emailRedirectTo: window.location.origin,
-          emailConfirm: false
+            username: `Guest_${randomId.substring(0, 6)}`
+          }
         }
       });
       
@@ -155,12 +104,12 @@ export default function Login() {
           
           <form onSubmit={handleLogin}>
             <div style={{ marginBottom: '15px' }}>
-              <label htmlFor="name" style={{ display: 'block', marginBottom: '5px' }}>Name</label>
+              <label htmlFor="email" style={{ display: 'block', marginBottom: '5px' }}>Email</label>
               <input
-                type="text"
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
                 style={{ 
                   width: '100%', 

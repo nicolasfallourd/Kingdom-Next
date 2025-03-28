@@ -6,6 +6,7 @@ import Head from 'next/head';
 
 export default function Register() {
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: '', isError: true });
@@ -17,9 +18,6 @@ export default function Register() {
     setMessage({ text: '', isError: true });
 
     try {
-      // Create a deterministic email from the name for Supabase auth
-      const email = `${name.toLowerCase().replace(/\s+/g, '_')}@kingdom-game.com`;
-      
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -102,6 +100,23 @@ export default function Register() {
                 required
                 minLength={3}
                 maxLength={20}
+                style={{ 
+                  width: '100%', 
+                  padding: '8px', 
+                  border: '1px solid black',
+                  fontFamily: 'monospace'
+                }}
+              />
+            </div>
+            
+            <div style={{ marginBottom: '15px' }}>
+              <label htmlFor="email" style={{ display: 'block', marginBottom: '5px' }}>Email</label>
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
                 style={{ 
                   width: '100%', 
                   padding: '8px', 
