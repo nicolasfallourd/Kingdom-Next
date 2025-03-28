@@ -16,6 +16,7 @@ export function GameProvider({ children }) {
   const [warReports, setWarReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [authenticated, setAuthenticated] = useState(false);
   const router = useRouter();
 
   // Set up global error handling
@@ -26,6 +27,54 @@ export function GameProvider({ children }) {
     // Add direct console logging for debugging
     console.log('*** KINGDOM DEBUG: GameProvider initialized ***');
   }, []);
+
+  // Set up auth state listener
+  useEffect(() => {
+    // Check for existing session
+    const checkSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error('*** KINGDOM DEBUG: Session error ***', error);
+          setError(error.message);
+          return;
+        }
+        
+        if (session) {
+          console.log('*** KINGDOM DEBUG: Existing session found ***', session.user.id);
+          setUser(session.user);
+          setAuthenticated(true);
+        }
+      } catch (error) {
+        console.error('*** KINGDOM DEBUG: Session check error ***', error);
+        setError(error.message);
+      }
+    };
+    
+    checkSession();
+    
+    // Set up auth state change listener
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('*** KINGDOM DEBUG: Auth state change ***', event, session?.user?.id);
+      debug.log('GameContext', 'Auth state change:', event, session?.user?.id);
+      
+      if (event === 'SIGNED_IN' && session) {
+        setUser(session.user);
+        setAuthenticated(true);
+      } else if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+        setUser(null);
+        setAuthenticated(false);
+        setGameState(null);
+        setOtherKingdoms([]);
+        setWarReports([]);
+        router.push('/login');
+      }
+    });
+    
+    return () => {
+      if (authListener) authListener.subscription.unsubscribe();
+    };
+  }, [router]);
 
   // Check for user session on mount
   useEffect(() => {
