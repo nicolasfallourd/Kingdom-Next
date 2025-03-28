@@ -494,25 +494,86 @@ export function GameProvider({ children }) {
   async function updateGameState(newState) {
     try {
       console.log('*** KINGDOM DEBUG: updateGameState started ***');
-      const { error } = await supabase
-        .from('game_states')
-        .update(newState)
-        .eq('id', user.id);
+      
+      // Cache the new state immediately to ensure UI responsiveness
+      setGameState(newState);
+      
+      // Store in localStorage as a backup
+      try {
+        localStorage.setItem(`kingdom_gamestate_${user.id}`, JSON.stringify(newState));
+        localStorage.setItem(`kingdom_gamestate_time_${user.id}`, Date.now().toString());
+        console.log('*** KINGDOM DEBUG: Game state cached in localStorage during update ***');
+      } catch (cacheError) {
+        console.error('*** KINGDOM DEBUG: Error caching game state during update ***', cacheError);
+        // Continue even if caching fails
+      }
+      
+      // Queue the update in localStorage in case the operation fails
+      try {
+        const pendingUpdates = JSON.parse(localStorage.getItem('kingdom_pending_updates') || '[]');
+        pendingUpdates.push({
+          id: user.id,
+          state: newState,
+          timestamp: Date.now()
+        });
+        localStorage.setItem('kingdom_pending_updates', JSON.stringify(pendingUpdates));
+        console.log('*** KINGDOM DEBUG: Update queued in pending updates ***');
+      } catch (queueError) {
+        console.error('*** KINGDOM DEBUG: Error queueing update ***', queueError);
+      }
+      
+      // Use safeSupabaseOperation with timeout handling
+      const { error } = await safeSupabaseOperation(
+        () => supabase
+          .from('game_states')
+          .update(newState)
+          .eq('id', user.id),
+        { error: new Error('Update operation timed out') },
+        15000 // 15 second timeout for update operations
+      );
 
       if (error) {
         console.error('*** KINGDOM DEBUG: Error updating game state ***', error);
-        throw error;
+        
+        // Don't throw here - we've already updated the local state and queued the update
+        console.log('*** KINGDOM DEBUG: Using local state due to update failure ***');
+        
+        // Mark that we have pending updates to retry later
+        localStorage.setItem('kingdom_has_pending_updates', 'true');
+        
+        // Still set the error for debugging purposes
+        setError(`Game state update queued offline: ${error.message}`);
+        return;
       }
-
-      setGameState(newState);
+      
+      // Update successful, remove this update from the pending queue
+      try {
+        const pendingUpdates = JSON.parse(localStorage.getItem('kingdom_pending_updates') || '[]');
+        const filteredUpdates = pendingUpdates.filter(update => 
+          update.id !== user.id || 
+          JSON.stringify(update.state) !== JSON.stringify(newState)
+        );
+        localStorage.setItem('kingdom_pending_updates', JSON.stringify(filteredUpdates));
+        
+        if (filteredUpdates.length === 0) {
+          localStorage.removeItem('kingdom_has_pending_updates');
+        }
+        
+        console.log('*** KINGDOM DEBUG: Update removed from pending queue ***');
+      } catch (queueError) {
+        console.error('*** KINGDOM DEBUG: Error managing pending updates queue ***', queueError);
+      }
+      
+      console.log('*** KINGDOM DEBUG: Game state updated successfully ***');
     } catch (error) {
       console.error('*** KINGDOM DEBUG: Error in updateGameState ***', error);
       console.error('Error updating game state:', error);
       setError(`Failed to update game state: ${error.message}`);
+      
+      // We've already updated the local state, so no need to throw
     }
   }
 
-  // Attack another kingdom
   async function attackKingdom(targetKingdomId) {
     try {
       console.log('*** KINGDOM DEBUG: attackKingdom started ***');
