@@ -169,23 +169,49 @@ export function GameProvider({ children }) {
       // Fetch other kingdoms
       console.log('*** KINGDOM DEBUG: Fetching other kingdoms ***');
       debug.log('GameContext', 'Fetching other kingdoms');
-      const { data: kingdoms, error: kingdomsError } = await supabase
-        .from('game_states')
-        .select('id, kingdom_name, buildings, army')
-        .neq('id', userId)
-        .limit(10);
-
-      console.log('*** KINGDOM DEBUG: Other kingdoms ***', kingdoms);
-      console.log('*** KINGDOM DEBUG: Kingdoms error ***', kingdomsError);
-      debug.log('GameContext', 'Other kingdoms:', kingdoms);
-      debug.log('GameContext', 'Kingdoms error:', kingdomsError);
-
-      if (kingdomsError) {
-        console.error('*** KINGDOM DEBUG: Error fetching other kingdoms ***', kingdomsError);
-        throw kingdomsError;
-      }
       
-      setOtherKingdoms(kingdoms || []);
+      // Log the current user ID for debugging
+      console.log('*** KINGDOM DEBUG: Current user ID for other kingdoms query ***', userId);
+      
+      try {
+        // First check how many total game states exist
+        const { data: totalCount, error: countError } = await supabase
+          .from('game_states')
+          .select('id', { count: 'exact', head: true });
+          
+        console.log('*** KINGDOM DEBUG: Total game states count ***', totalCount);
+        
+        if (countError) {
+          console.error('*** KINGDOM DEBUG: Error counting game states ***', countError);
+        }
+        
+        // Now fetch other kingdoms
+        const { data: kingdoms, error: kingdomsError } = await supabase
+          .from('game_states')
+          .select('id, kingdom_name, buildings, army')
+          .neq('id', userId)
+          .limit(10);
+
+        console.log('*** KINGDOM DEBUG: Other kingdoms query ***', {
+          query: `FROM game_states SELECT id, kingdom_name, buildings, army WHERE id != ${userId} LIMIT 10`,
+          results: kingdoms ? kingdoms.length : 0
+        });
+        console.log('*** KINGDOM DEBUG: Other kingdoms ***', kingdoms);
+        console.log('*** KINGDOM DEBUG: Kingdoms error ***', kingdomsError);
+        debug.log('GameContext', 'Other kingdoms:', kingdoms);
+        debug.log('GameContext', 'Kingdoms error:', kingdomsError);
+
+        if (kingdomsError) {
+          console.error('*** KINGDOM DEBUG: Error fetching other kingdoms ***', kingdomsError);
+          throw kingdomsError;
+        }
+        
+        setOtherKingdoms(kingdoms || []);
+      } catch (error) {
+        console.error('*** KINGDOM DEBUG: Exception in other kingdoms fetch ***', error);
+        // Don't throw here, just log the error and continue
+        setOtherKingdoms([]);
+      }
 
       // Fetch war reports
       console.log('*** KINGDOM DEBUG: Fetching war reports ***');
