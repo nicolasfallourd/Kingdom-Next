@@ -21,7 +21,7 @@ export default function WarTab({ addNotification }) {
       ) : (
         <div>
           {warReports.map((report) => {
-            const isAttacker = report.attacker_id === gameState.user_id;
+            const isAttacker = report.attacker_id === gameState.id;
             const isVictory = isAttacker ? report.victory : !report.victory;
             
             return (

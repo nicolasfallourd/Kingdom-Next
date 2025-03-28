@@ -35,7 +35,7 @@ export default function AttackModal({ targetKingdom, onClose, onAttackSuccess })
   const handleAttack = async () => {
     setAttacking(true);
     try {
-      const result = await attackKingdom(targetKingdom.user_id);
+      const result = await attackKingdom(targetKingdom.id);
       setAttackResult(result);
       
       if (result) {

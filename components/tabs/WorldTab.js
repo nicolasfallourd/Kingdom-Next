@@ -93,7 +93,7 @@ export default function WorldTab({ addNotification }) {
                   const successChance = estimateSuccessChance(ratio);
                   
                   return (
-                    <tr key={kingdom.user_id}>
+                    <tr key={kingdom.id}>
                       <td>{kingdom.kingdom_name}</td>
                       <td>
                         {Object.values(kingdom.army).reduce((sum, count) => sum + count, 0)}

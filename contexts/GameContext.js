@@ -67,7 +67,7 @@ export function GameProvider({ children }) {
       const { data: gameStateData, error: gameStateError } = await supabase
         .from('game_states')
         .select('*')
-        .eq('user_id', userId)
+        .eq('id', userId)
         .single();
 
       if (gameStateError && gameStateError.code !== 'PGRST116') {
@@ -84,8 +84,8 @@ export function GameProvider({ children }) {
       // Fetch other kingdoms
       const { data: kingdoms, error: kingdomsError } = await supabase
         .from('game_states')
-        .select('user_id, kingdom_name, buildings, army')
-        .neq('user_id', userId)
+        .select('id, kingdom_name, buildings, army')
+        .neq('id', userId)
         .limit(10);
 
       if (kingdomsError) {
@@ -121,7 +121,7 @@ export function GameProvider({ children }) {
       const username = user?.user_metadata?.username || 'Kingdom';
 
       const newGameState = {
-        user_id: userId,
+        id: userId,
         kingdom_name: `${username}'s Realm`,
         resources: {
           gold: 1000,
@@ -161,13 +161,12 @@ export function GameProvider({ children }) {
     }
   }
 
-  // Update game state in Supabase
   async function updateGameState(newState) {
     try {
       const { error } = await supabase
         .from('game_states')
         .update(newState)
-        .eq('user_id', user.id);
+        .eq('id', user.id);
 
       if (error) {
         throw error;
@@ -202,7 +201,7 @@ export function GameProvider({ children }) {
       const { data: targetKingdom, error: targetError } = await supabase
         .from('game_states')
         .select('*')
-        .eq('user_id', targetKingdomId)
+        .eq('id', targetKingdomId)
         .single();
 
       if (targetError) {
