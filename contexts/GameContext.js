@@ -422,6 +422,17 @@ export function GameProvider({ children }) {
       console.log('*** KINGDOM DEBUG: attackKingdom started ***');
       debug.log('GameContext', 'Attacking kingdom with ID:', targetKingdomId);
       
+      // Validate inputs
+      if (!gameState) {
+        console.error('*** KINGDOM DEBUG: No game state available ***');
+        throw new Error('No game state available');
+      }
+      
+      if (!targetKingdomId) {
+        console.error('*** KINGDOM DEBUG: No target kingdom ID provided ***');
+        throw new Error('No target kingdom ID provided');
+      }
+      
       // Get target kingdom data
       const { data: targetKingdom, error: targetError } = await supabase
         .from('game_states')
@@ -452,7 +463,8 @@ export function GameProvider({ children }) {
 
       if (!targetKingdom.army) {
         console.error('*** KINGDOM DEBUG: Target army is missing ***');
-        throw new Error('Target kingdom has no army');
+        targetKingdom.army = { swordsmen: 0, archers: 0, cavalry: 0, catapults: 0 };
+        console.log('*** KINGDOM DEBUG: Created default army for target ***');
       }
 
       if (!targetKingdom.buildings || !targetKingdom.buildings.castle) {
@@ -566,17 +578,25 @@ export function GameProvider({ children }) {
       console.log('*** KINGDOM DEBUG: War report to insert ***', warReport);
       debug.log('GameContext', 'War report to insert:', warReport);
 
-      // Update database
-      const { error: reportError } = await supabase
-        .from('war_reports')
-        .insert(warReport);
-        
-      console.log('*** KINGDOM DEBUG: Report insert error ***', reportError);
-      debug.log('GameContext', 'Report insert error:', reportError);
+      // Check if war_reports table exists
+      try {
+        // First try to insert the war report
+        const { error: reportError } = await supabase
+          .from('war_reports')
+          .insert(warReport);
+          
+        console.log('*** KINGDOM DEBUG: Report insert error ***', reportError);
+        debug.log('GameContext', 'Report insert error:', reportError);
 
-      if (reportError) {
-        console.error('*** KINGDOM DEBUG: Error inserting war report ***', reportError);
-        throw reportError;
+        if (reportError) {
+          console.error('*** KINGDOM DEBUG: Error inserting war report ***', reportError);
+          console.warn('*** KINGDOM DEBUG: Continuing without war report ***');
+          // Continue without war report - don't throw error
+        }
+      } catch (warReportError) {
+        console.error('*** KINGDOM DEBUG: Exception inserting war report ***', warReportError);
+        console.warn('*** KINGDOM DEBUG: Continuing without war report ***');
+        // Continue without war report
       }
 
       // Update attacker state
