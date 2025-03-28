@@ -307,69 +307,6 @@ export function GameProvider({ children }) {
     }
   }
 
-  async function createNewGameState(userId) {
-    try {
-      console.log('*** KINGDOM DEBUG: createNewGameState started for user:', userId, '***');
-      debug.log('GameContext', 'Creating new game state for user:', userId);
-      // Get user metadata for username
-      const { data: { user } } = await supabase.auth.getUser();
-      const username = user?.user_metadata?.username || 'Kingdom';
-      console.log('*** KINGDOM DEBUG: Username ***', username);
-      debug.log('GameContext', 'Username:', username);
-
-      const newGameState = {
-        id: userId,
-        username: username, 
-        kingdom_name: `${username}'s Realm`,
-        resources: {
-          gold: 1000,
-          food: 500,
-          wood: 300,
-          stone: 200
-        },
-        buildings: {
-          castle: { level: 1, defense_bonus: 10 },
-          barracks: { level: 1, training_speed: 1 },
-          farm: { level: 1, food_production: 10 },
-          mine: { level: 1, gold_production: 5 }
-        },
-        army: {
-          swordsmen: 10,
-          archers: 5,
-          cavalry: 0,
-          catapults: 0
-        },
-        last_resource_collection: new Date().toISOString()
-      };
-
-      console.log('*** KINGDOM DEBUG: New game state to insert ***', newGameState);
-      debug.log('GameContext', 'New game state to insert:', newGameState);
-      const { data, error } = await supabase
-        .from('game_states')
-        .insert(newGameState)
-        .select()
-        .single();
-
-      console.log('*** KINGDOM DEBUG: Insert result data ***', data);
-      console.log('*** KINGDOM DEBUG: Insert error ***', error);
-      debug.log('GameContext', 'Insert result data:', data);
-      debug.log('GameContext', 'Insert error:', error);
-
-      if (error) {
-        console.error('*** KINGDOM DEBUG: Error creating new game state ***', error);
-        throw error;
-      }
-
-      setGameState(data);
-      console.log('*** KINGDOM DEBUG: Game state created and set successfully ***');
-      debug.log('GameContext', 'Game state created and set successfully');
-    } catch (error) {
-      console.error('*** KINGDOM DEBUG: Error in createNewGameState ***', error);
-      console.error('Error creating new game state:', error);
-      setError(`Failed to create new game state: ${error.message}`);
-    }
-  }
-
   async function updateGameState(newState) {
     try {
       console.log('*** KINGDOM DEBUG: updateGameState started ***');
@@ -677,6 +614,69 @@ export function GameProvider({ children }) {
       console.error('Error attacking kingdom:', error);
       setError('Failed to attack kingdom');
       return null;
+    }
+  }
+
+  async function createNewGameState(userId) {
+    try {
+      console.log('*** KINGDOM DEBUG: createNewGameState started for user:', userId, '***');
+      debug.log('GameContext', 'Creating new game state for user:', userId);
+      // Get user metadata for username
+      const { data: { user } } = await supabase.auth.getUser();
+      const username = user?.user_metadata?.username || 'Kingdom';
+      console.log('*** KINGDOM DEBUG: Username ***', username);
+      debug.log('GameContext', 'Username:', username);
+
+      const newGameState = {
+        id: userId,
+        username: username, 
+        kingdom_name: `${username}'s Realm`,
+        resources: {
+          gold: 1000,
+          food: 500,
+          wood: 300,
+          stone: 200
+        },
+        buildings: {
+          castle: { level: 1, defense_bonus: 10 },
+          barracks: { level: 1, training_speed: 1 },
+          farm: { level: 1, food_production: 10 },
+          mine: { level: 1, gold_production: 5 }
+        },
+        army: {
+          swordsmen: 10,
+          archers: 5,
+          cavalry: 0,
+          catapults: 0
+        },
+        last_resource_collection: new Date().toISOString()
+      };
+
+      console.log('*** KINGDOM DEBUG: New game state to insert ***', newGameState);
+      debug.log('GameContext', 'New game state to insert:', newGameState);
+      const { data, error } = await supabase
+        .from('game_states')
+        .insert(newGameState)
+        .select()
+        .single();
+
+      console.log('*** KINGDOM DEBUG: Insert result data ***', data);
+      console.log('*** KINGDOM DEBUG: Insert error ***', error);
+      debug.log('GameContext', 'Insert result data:', data);
+      debug.log('GameContext', 'Insert error:', error);
+
+      if (error) {
+        console.error('*** KINGDOM DEBUG: Error creating new game state ***', error);
+        throw error;
+      }
+
+      setGameState(data);
+      console.log('*** KINGDOM DEBUG: Game state created and set successfully ***');
+      debug.log('GameContext', 'Game state created and set successfully');
+    } catch (error) {
+      console.error('*** KINGDOM DEBUG: Error in createNewGameState ***', error);
+      console.error('Error creating new game state:', error);
+      setError(`Failed to create new game state: ${error.message}`);
     }
   }
 
