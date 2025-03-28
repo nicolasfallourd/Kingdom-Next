@@ -313,10 +313,32 @@ export function GameProvider({ children }) {
       
       // Check if the state is actually different before updating
       // This prevents infinite update loops
-      if (gameState && JSON.stringify(gameState) === JSON.stringify(newState)) {
+      // But we need to be careful with nested objects like army and resources
+      let hasChanged = false;
+      
+      if (!gameState) {
+        hasChanged = true;
+      } else {
+        // Check if any of the key properties have changed
+        const keysToCheck = ['army', 'resources', 'buildings', 'last_resource_collection'];
+        for (const key of keysToCheck) {
+          if (JSON.stringify(gameState[key]) !== JSON.stringify(newState[key])) {
+            console.log(`*** KINGDOM DEBUG: Detected change in ${key} ***`);
+            hasChanged = true;
+            break;
+          }
+        }
+      }
+      
+      if (!hasChanged) {
         console.log('*** KINGDOM DEBUG: State unchanged, skipping update ***');
         return;
       }
+      
+      console.log('*** KINGDOM DEBUG: State has changed, updating database ***', {
+        oldArmy: gameState?.army,
+        newArmy: newState.army
+      });
       
       // Set state immediately for UI responsiveness
       setGameState(newState);
@@ -687,57 +709,62 @@ export function GameProvider({ children }) {
     }
   }
 
-  // Helper function to calculate army losses
-  function calculateLosses(army, lossPercentage) {
-    if (!army) return {};
+  async function trainTroops(troopType, count) {
+    if (!gameState) return;
     
-    return {
-      swordsmen: Math.floor((army.swordsmen || 0) * lossPercentage),
-      archers: Math.floor((army.archers || 0) * lossPercentage),
-      cavalry: Math.floor((army.cavalry || 0) * lossPercentage),
-      catapults: Math.floor((army.catapults || 0) * lossPercentage)
-    };
+    try {
+      const troopCosts = {
+        swordsmen: { gold: 50, food: 20 },
+        archers: { gold: 80, food: 15 },
+        cavalry: { gold: 150, food: 30 },
+        catapults: { gold: 300, food: 50 }
+      };
+      
+      const totalGoldCost = troopCosts[troopType].gold * count;
+      const totalFoodCost = troopCosts[troopType].food * count;
+      
+      // Check if player has enough resources
+      if (gameState.resources.gold < totalGoldCost || 
+          gameState.resources.food < totalFoodCost) {
+        console.error('*** KINGDOM DEBUG: Not enough resources to train troops ***');
+        throw new Error('Not enough resources to train troops');
+      }
+      
+      console.log('*** KINGDOM DEBUG: Training troops ***', {
+        troopType,
+        count,
+        before: gameState.army[troopType],
+        after: gameState.army[troopType] + count
+      });
+      
+      // Create a deep copy of the game state to ensure all nested objects are new references
+      const updatedState = JSON.parse(JSON.stringify(gameState));
+      
+      // Update resources
+      updatedState.resources.gold -= totalGoldCost;
+      updatedState.resources.food -= totalFoodCost;
+      
+      // Update army
+      updatedState.army[troopType] += count;
+      
+      console.log('*** KINGDOM DEBUG: Updated army ***', {
+        oldArmy: gameState.army,
+        newArmy: updatedState.army
+      });
+      
+      // Update in database with explicit army object
+      await updateGameState(updatedState);
+      
+      return updatedState.army;
+      
+    } catch (error) {
+      console.error(`*** KINGDOM DEBUG: Error training ${troopType} ***`, error);
+      console.error(`Error training ${troopType}:`, error);
+      setError(`Failed to train ${troopType}`);
+      return null;
+    }
   }
 
-  // Calculate total army power
-  function calculateArmyPower(army) {
-    // Check if army is undefined or null
-    if (!army) {
-      console.warn('*** KINGDOM DEBUG: Army is undefined or null in calculateArmyPower ***');
-      return 0;
-    }
-    
-    // Ensure all army units exist, defaulting to 0 if not
-    const swordsmen = army.swordsmen || 0;
-    const archers = army.archers || 0;
-    const cavalry = army.cavalry || 0;
-    const catapults = army.catapults || 0;
-    
-    return (swordsmen * 1) + 
-           (archers * 1.5) + 
-           (cavalry * 3) + 
-           (catapults * 5);
-  }
-
-  // Calculate defense power
-  function calculateDefensePower(army, castle) {
-    // Check if army or castle is undefined or null
-    if (!army) {
-      console.warn('*** KINGDOM DEBUG: Army is undefined or null in calculateDefensePower ***');
-      return 0;
-    }
-    
-    if (!castle) {
-      console.warn('*** KINGDOM DEBUG: Castle is undefined or null in calculateDefensePower ***');
-      return calculateArmyPower(army); // Just use army power without bonus
-    }
-    
-    const armyPower = calculateArmyPower(army);
-    const defenseBonus = (castle.defense_bonus || 0) / 100;
-    return armyPower * (1 + defenseBonus);
-  }
-
-  // Collect resources
   async function collectResources() {
     if (!gameState) return;
     
@@ -780,7 +807,6 @@ export function GameProvider({ children }) {
     }
   }
 
-  // Build/upgrade building
   async function upgradeBuilding(buildingType) {
     if (!gameState) return;
     
@@ -865,53 +891,54 @@ export function GameProvider({ children }) {
     }
   }
   
-  // Train troops
-  async function trainTroops(troopType, count) {
-    if (!gameState) return;
+  // Helper function to calculate army losses
+  function calculateLosses(army, lossPercentage) {
+    if (!army) return {};
     
-    try {
-      const troopCosts = {
-        swordsmen: { gold: 50, food: 20 },
-        archers: { gold: 80, food: 15 },
-        cavalry: { gold: 150, food: 30 },
-        catapults: { gold: 300, food: 50 }
-      };
-      
-      const totalGoldCost = troopCosts[troopType].gold * count;
-      const totalFoodCost = troopCosts[troopType].food * count;
-      
-      // Check if player has enough resources
-      if (gameState.resources.gold < totalGoldCost || 
-          gameState.resources.food < totalFoodCost) {
-        console.error('*** KINGDOM DEBUG: Not enough resources to train troops ***');
-        throw new Error('Not enough resources to train troops');
-      }
-      
-      // Update game state
-      const updatedState = {
-        ...gameState,
-        resources: {
-          ...gameState.resources,
-          gold: gameState.resources.gold - totalGoldCost,
-          food: gameState.resources.food - totalFoodCost
-        },
-        army: {
-          ...gameState.army,
-          [troopType]: gameState.army[troopType] + count
-        }
-      };
-      
-      // Update in database
-      await updateGameState(updatedState);
-      
-      return updatedState.army;
-      
-    } catch (error) {
-      console.error(`*** KINGDOM DEBUG: Error training ${troopType} ***`, error);
-      console.error(`Error training ${troopType}:`, error);
-      setError(`Failed to train ${troopType}`);
-      return null;
+    return {
+      swordsmen: Math.floor((army.swordsmen || 0) * lossPercentage),
+      archers: Math.floor((army.archers || 0) * lossPercentage),
+      cavalry: Math.floor((army.cavalry || 0) * lossPercentage),
+      catapults: Math.floor((army.catapults || 0) * lossPercentage)
+    };
+  }
+
+  // Calculate total army power
+  function calculateArmyPower(army) {
+    // Check if army is undefined or null
+    if (!army) {
+      console.warn('*** KINGDOM DEBUG: Army is undefined or null in calculateArmyPower ***');
+      return 0;
     }
+    
+    // Ensure all army units exist, defaulting to 0 if not
+    const swordsmen = army.swordsmen || 0;
+    const archers = army.archers || 0;
+    const cavalry = army.cavalry || 0;
+    const catapults = army.catapults || 0;
+    
+    return (swordsmen * 1) + 
+           (archers * 1.5) + 
+           (cavalry * 3) + 
+           (catapults * 5);
+  }
+
+  // Calculate defense power
+  function calculateDefensePower(army, castle) {
+    // Check if army or castle is undefined or null
+    if (!army) {
+      console.warn('*** KINGDOM DEBUG: Army is undefined or null in calculateDefensePower ***');
+      return 0;
+    }
+    
+    if (!castle) {
+      console.warn('*** KINGDOM DEBUG: Castle is undefined or null in calculateDefensePower ***');
+      return calculateArmyPower(army); // Just use army power without bonus
+    }
+    
+    const armyPower = calculateArmyPower(army);
+    const defenseBonus = (castle.defense_bonus || 0) / 100;
+    return armyPower * (1 + defenseBonus);
   }
 
   // Sign out
