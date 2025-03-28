@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useGame } from '../contexts/GameContext';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { debug } from '../lib/debug';
 
 // Components
 import KingdomTab from '../components/tabs/KingdomTab';
@@ -25,6 +26,7 @@ export default function Home() {
   
   const [activeTab, setActiveTab] = useState('kingdom');
   const [notifications, setNotifications] = useState([]);
+  const [loadingDetails, setLoadingDetails] = useState('Initializing...');
   const router = useRouter();
 
   // Check if user is authenticated
@@ -83,12 +85,101 @@ export default function Home() {
     await signOut();
   };
 
+  useEffect(() => {
+    debug.log('HomePage', 'Home page mounted', { user, gameState, loading, error });
+    
+    // Add more detailed loading information
+    if (loading) {
+      const checkLoadingState = () => {
+        if (!user) {
+          setLoadingDetails('Checking authentication...');
+        } else if (!gameState) {
+          setLoadingDetails('Fetching game state...');
+        } else {
+          setLoadingDetails('Preparing your kingdom...');
+        }
+      };
+      
+      checkLoadingState();
+      const interval = setInterval(checkLoadingState, 1000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [user, gameState, loading, error]);
+
   // Show loading screen while data is being fetched
   if (loading) {
-    return <LoadingScreen />;
+    debug.log('HomePage', 'Showing loading screen', { loadingDetails });
+    return <LoadingScreen message={loadingDetails} />;
   }
 
-  // Render main game interface
+  // Show error message if there was an error
+  if (error) {
+    debug.error('HomePage', 'Error in home page', error);
+    return (
+      <div style={{ 
+        maxWidth: '600px', 
+        margin: '100px auto', 
+        padding: '20px', 
+        border: '1px solid black',
+        fontFamily: 'monospace'
+      }}>
+        <h1>Error</h1>
+        <p>{error}</p>
+        <p>Please try refreshing the page or contact support if the problem persists.</p>
+        <button 
+          onClick={() => window.location.reload()} 
+          style={{ 
+            padding: '8px 16px', 
+            border: '1px solid black',
+            background: 'white',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            marginTop: '20px'
+          }}
+        >
+          Refresh
+        </button>
+      </div>
+    );
+  }
+
+  // Ensure gameState exists
+  if (!gameState) {
+    debug.error('HomePage', 'Game state is null despite loading being complete');
+    return (
+      <div style={{ 
+        maxWidth: '600px', 
+        margin: '100px auto', 
+        padding: '20px', 
+        border: '1px solid black',
+        fontFamily: 'monospace'
+      }}>
+        <h1>Game State Error</h1>
+        <p>Unable to load your kingdom data. This might be due to a database issue.</p>
+        <p>Technical details: Game state is null despite loading being complete.</p>
+        <button 
+          onClick={() => window.location.reload()} 
+          style={{ 
+            padding: '8px 16px', 
+            border: '1px solid black',
+            background: 'white',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            marginTop: '20px'
+          }}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  debug.log('HomePage', 'Rendering game interface', { 
+    kingdomName: gameState.kingdom_name,
+    activeTab
+  });
+
   return (
     <>
       <Head>

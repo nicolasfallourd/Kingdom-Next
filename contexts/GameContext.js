@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'next/router';
+import { debug, supabaseSchema } from '../lib/debug';
 
 const GameContext = createContext();
 
@@ -17,17 +18,28 @@ export function GameProvider({ children }) {
   const [error, setError] = useState(null);
   const router = useRouter();
 
+  // Set up global error handling
+  useEffect(() => {
+    debug.setupGlobalErrorHandling();
+    debug.log('GameContext', 'GameProvider initialized');
+  }, []);
+
   // Check for user session on mount
   useEffect(() => {
+    debug.log('GameContext', 'Setting up auth listener');
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        debug.log('GameContext', `Auth state changed: ${event}`, session);
         if (session) {
           setUser(session.user);
+          debug.log('GameContext', 'User authenticated, fetching game state', { userId: session.user.id });
           await fetchGameState(session.user.id);
         } else {
+          debug.log('GameContext', 'No active session, clearing user and game state');
           setUser(null);
           setGameState(null);
           if (router.pathname !== '/login' && router.pathname !== '/register') {
+            debug.log('GameContext', 'Redirecting to login');
             router.push('/login');
           }
         }
@@ -39,6 +51,7 @@ export function GameProvider({ children }) {
     checkUser();
 
     return () => {
+      debug.log('GameContext', 'Cleaning up auth listener');
       authListener?.subscription.unsubscribe();
     };
   }, []);
@@ -48,8 +61,10 @@ export function GameProvider({ children }) {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setUser(session.user);
+        debug.log('GameContext', 'User authenticated, fetching game state', { userId: session.user.id });
         await fetchGameState(session.user.id);
       } else {
+        debug.log('GameContext', 'No active session, clearing user and game state');
         setUser(null);
         setGameState(null);
       }
@@ -63,7 +78,7 @@ export function GameProvider({ children }) {
 
   async function fetchGameState(userId) {
     try {
-      console.log('Fetching game state for user:', userId);
+      debug.log('GameContext', 'Fetching game state for user:', userId);
       // Fetch game state
       const { data: gameStateData, error: gameStateError } = await supabase
         .from('game_states')
@@ -71,8 +86,8 @@ export function GameProvider({ children }) {
         .eq('id', userId)
         .single();
 
-      console.log('Game state data:', gameStateData);
-      console.log('Game state error:', gameStateError);
+      debug.log('GameContext', 'Game state data:', gameStateData);
+      debug.log('GameContext', 'Game state error:', gameStateError);
 
       if (gameStateError && gameStateError.code !== 'PGRST116') {
         throw gameStateError;
@@ -80,23 +95,23 @@ export function GameProvider({ children }) {
 
       // If no game state exists, create a new one
       if (!gameStateData) {
-        console.log('No game state found, creating new one');
+        debug.log('GameContext', 'No game state found, creating new one');
         await createNewGameState(userId);
       } else {
-        console.log('Setting game state:', gameStateData);
+        debug.log('GameContext', 'Setting game state:', gameStateData);
         setGameState(gameStateData);
       }
 
       // Fetch other kingdoms
-      console.log('Fetching other kingdoms');
+      debug.log('GameContext', 'Fetching other kingdoms');
       const { data: kingdoms, error: kingdomsError } = await supabase
         .from('game_states')
         .select('id, kingdom_name, buildings, army')
         .neq('id', userId)
         .limit(10);
 
-      console.log('Other kingdoms:', kingdoms);
-      console.log('Kingdoms error:', kingdomsError);
+      debug.log('GameContext', 'Other kingdoms:', kingdoms);
+      debug.log('GameContext', 'Kingdoms error:', kingdomsError);
 
       if (kingdomsError) {
         throw kingdomsError;
@@ -105,7 +120,7 @@ export function GameProvider({ children }) {
       setOtherKingdoms(kingdoms || []);
 
       // Fetch war reports
-      console.log('Fetching war reports');
+      debug.log('GameContext', 'Fetching war reports');
       const { data: reports, error: reportsError } = await supabase
         .from('war_reports')
         .select('*')
@@ -113,15 +128,15 @@ export function GameProvider({ children }) {
         .order('created_at', { ascending: false })
         .limit(10);
 
-      console.log('War reports:', reports);
-      console.log('Reports error:', reportsError);
+      debug.log('GameContext', 'War reports:', reports);
+      debug.log('GameContext', 'Reports error:', reportsError);
 
       if (reportsError) {
         throw reportsError;
       }
       
       setWarReports(reports || []);
-      console.log('Game data fetching complete');
+      debug.log('GameContext', 'Game data fetching complete');
 
     } catch (error) {
       console.error('Error fetching game data:', error);
@@ -131,11 +146,11 @@ export function GameProvider({ children }) {
 
   async function createNewGameState(userId) {
     try {
-      console.log('Creating new game state for user:', userId);
+      debug.log('GameContext', 'Creating new game state for user:', userId);
       // Get user metadata for username
       const { data: { user } } = await supabase.auth.getUser();
       const username = user?.user_metadata?.username || 'Kingdom';
-      console.log('Username:', username);
+      debug.log('GameContext', 'Username:', username);
 
       const newGameState = {
         id: userId,
@@ -162,22 +177,22 @@ export function GameProvider({ children }) {
         last_resource_collection: new Date().toISOString()
       };
 
-      console.log('New game state to insert:', newGameState);
+      debug.log('GameContext', 'New game state to insert:', newGameState);
       const { data, error } = await supabase
         .from('game_states')
         .insert(newGameState)
         .select()
         .single();
 
-      console.log('Insert result data:', data);
-      console.log('Insert error:', error);
+      debug.log('GameContext', 'Insert result data:', data);
+      debug.log('GameContext', 'Insert error:', error);
 
       if (error) {
         throw error;
       }
 
       setGameState(data);
-      console.log('Game state created and set successfully');
+      debug.log('GameContext', 'Game state created and set successfully');
     } catch (error) {
       console.error('Error creating new game state:', error);
       setError('Failed to create new game state');
@@ -205,7 +220,7 @@ export function GameProvider({ children }) {
   // Attack another kingdom
   async function attackKingdom(targetKingdomId) {
     try {
-      console.log('Attacking kingdom with ID:', targetKingdomId);
+      debug.log('GameContext', 'Attacking kingdom with ID:', targetKingdomId);
       
       // Get target kingdom data
       const { data: targetKingdom, error: targetError } = await supabase
@@ -214,8 +229,8 @@ export function GameProvider({ children }) {
         .eq('id', targetKingdomId)
         .single();
 
-      console.log('Target kingdom data:', targetKingdom);
-      console.log('Target error:', targetError);
+      debug.log('GameContext', 'Target kingdom data:', targetKingdom);
+      debug.log('GameContext', 'Target error:', targetError);
 
       if (targetError) {
         throw targetError;
@@ -246,16 +261,16 @@ export function GameProvider({ children }) {
       const attackPower = calculateArmyPower(gameState.army);
       const defensePower = calculateDefensePower(targetKingdom.army, targetKingdom.buildings.castle);
       
-      console.log('Attack power:', attackPower);
-      console.log('Defense power:', defensePower);
+      debug.log('GameContext', 'Attack power:', attackPower);
+      debug.log('GameContext', 'Defense power:', defensePower);
 
       // Determine outcome
       const ratio = attackPower / defensePower;
       const randomFactor = 0.8 + (Math.random() * 0.4); // Random factor between 0.8 and 1.2
       const adjustedRatio = ratio * randomFactor;
       
-      console.log('Attack/Defense ratio:', ratio);
-      console.log('Adjusted ratio with random factor:', adjustedRatio);
+      debug.log('GameContext', 'Attack/Defense ratio:', ratio);
+      debug.log('GameContext', 'Adjusted ratio with random factor:', adjustedRatio);
       
       const victory = adjustedRatio > 1;
       
@@ -288,9 +303,9 @@ export function GameProvider({ children }) {
         resourcesStolen = { gold: 0, food: 0, wood: 0, stone: 0 };
       }
       
-      console.log('Attacker losses:', attackerLosses);
-      console.log('Defender losses:', defenderLosses);
-      console.log('Resources stolen:', resourcesStolen);
+      debug.log('GameContext', 'Attacker losses:', attackerLosses);
+      debug.log('GameContext', 'Defender losses:', defenderLosses);
+      debug.log('GameContext', 'Resources stolen:', resourcesStolen);
 
       // Update attacker's army and resources
       const updatedAttackerArmy = {
@@ -339,14 +354,14 @@ export function GameProvider({ children }) {
         }
       };
       
-      console.log('War report to insert:', warReport);
+      debug.log('GameContext', 'War report to insert:', warReport);
 
       // Update database
       const { error: reportError } = await supabase
         .from('war_reports')
         .insert(warReport);
         
-      console.log('Report insert error:', reportError);
+      debug.log('GameContext', 'Report insert error:', reportError);
 
       if (reportError) {
         throw reportError;
@@ -367,7 +382,7 @@ export function GameProvider({ children }) {
         })
         .eq('id', gameState.id);
         
-      console.log('Attacker update error:', attackerUpdateError);
+      debug.log('GameContext', 'Attacker update error:', attackerUpdateError);
 
       if (attackerUpdateError) {
         throw attackerUpdateError;
@@ -382,7 +397,7 @@ export function GameProvider({ children }) {
         })
         .eq('id', targetKingdom.id);
         
-      console.log('Defender update error:', defenderUpdateError);
+      debug.log('GameContext', 'Defender update error:', defenderUpdateError);
 
       if (defenderUpdateError) {
         throw defenderUpdateError;
