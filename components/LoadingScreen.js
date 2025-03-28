@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { debug } from '../lib/debug';
-import { testSupabaseConnection } from '../lib/supabase';
+import { testSupabaseConnection, diagnoseDatabaseIssues } from '../lib/supabase';
 
 export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
   const [dots, setDots] = useState('');
@@ -11,6 +11,8 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
   const [connectionStatus, setConnectionStatus] = useState('Unknown');
   const [isTesting, setIsTesting] = useState(false);
   const [testResults, setTestResults] = useState(null);
+  const [diagnosticResults, setDiagnosticResults] = useState(null);
+  const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
 
   useEffect(() => {
     // Force debug mode after 3 seconds
@@ -113,6 +115,28 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
     }
   };
   
+  // Run comprehensive diagnostics
+  const runDiagnostics = async () => {
+    try {
+      setIsRunningDiagnostics(true);
+      console.log('*** KINGDOM DEBUG: Running comprehensive diagnostics ***');
+      
+      const results = await diagnoseDatabaseIssues();
+      
+      setDiagnosticResults(results);
+      console.log('*** KINGDOM DEBUG: Diagnostic results ***', results);
+    } catch (error) {
+      console.error('*** KINGDOM DEBUG: Error running diagnostics ***', error);
+      setDiagnosticResults({ 
+        success: false, 
+        error: error.message,
+        recommendations: ['An error occurred while running diagnostics']
+      });
+    } finally {
+      setIsRunningDiagnostics(false);
+    }
+  };
+  
   // Clear game state function
   const clearGameState = async () => {
     console.log('*** KINGDOM DEBUG: Attempting to clear game state ***');
@@ -208,6 +232,23 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
             </button>
             
             <button 
+              onClick={runDiagnostics}
+              disabled={isRunningDiagnostics}
+              style={{ 
+                padding: '5px 10px',
+                border: '1px solid black',
+                background: 'white',
+                cursor: isRunningDiagnostics ? 'default' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '12px',
+                marginRight: '10px',
+                opacity: isRunningDiagnostics ? 0.7 : 1
+              }}
+            >
+              {isRunningDiagnostics ? 'Running...' : 'Run Diagnostics'}
+            </button>
+            
+            <button 
               onClick={forceReload}
               style={{ 
                 padding: '5px 10px',
@@ -269,6 +310,44 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
               </div>
             )}
             
+            {diagnosticResults && (
+              <div style={{
+                marginBottom: '15px',
+                padding: '10px',
+                border: '1px solid #ccc',
+                background: '#f5f5ff'
+              }}>
+                <p><strong>Diagnostic Results:</strong></p>
+                
+                {diagnosticResults.recommendations && diagnosticResults.recommendations.length > 0 && (
+                  <div style={{
+                    marginBottom: '10px',
+                    padding: '10px',
+                    border: '1px solid #ffc107',
+                    background: '#fffbf0'
+                  }}>
+                    <p><strong>Recommendations:</strong></p>
+                    <ul style={{ paddingLeft: '20px', margin: '5px 0' }}>
+                      {diagnosticResults.recommendations.map((rec, idx) => (
+                        <li key={idx}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                <pre style={{ 
+                  fontSize: '10px', 
+                  margin: '5px 0',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-all',
+                  maxHeight: '150px',
+                  overflowY: 'auto'
+                }}>
+                  {JSON.stringify(diagnosticResults, null, 2)}
+                </pre>
+              </div>
+            )}
+            
             <p>If you're seeing this screen for too long, there might be an issue with:</p>
             <ul style={{ paddingLeft: '20px' }}>
               <li>Database connection</li>
@@ -306,9 +385,9 @@ export default function LoadingScreen({ message = 'Loading your kingdom...' }) {
             
             <p>Try these steps:</p>
             <ol style={{ paddingLeft: '20px' }}>
-              <li>Click "Test Connection" to check if Supabase is reachable</li>
-              <li>Click "Force Reload" to refresh with debug mode enabled</li>
-              <li>If that doesn't work, click "Reset Game State" to clear your game data</li>
+              <li>Click "Run Diagnostics" to get detailed information about the Supabase connection</li>
+              <li>Check the recommendations in the diagnostic results</li>
+              <li>Visit the Supabase dashboard to verify your project is active</li>
               <li>Check browser console (F12) for more detailed errors</li>
             </ol>
           </div>
